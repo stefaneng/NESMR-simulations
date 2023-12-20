@@ -1,0 +1,36 @@
+DSC:
+    greatlakes:
+        description: University of Michigan greatlakes cluster
+        address: localhost
+        paths:
+            home: /home/engs
+        queue_type: pbs
+        status_check_interval: 20
+        max_running_jobs: 90
+        max_cores: 40
+        max_mem: 57G
+        task_template: |
+            #!/bin/bash
+            #SBATCH --time={walltime}
+            #SBATCH --nodes={nodes}
+            #SBATCH --cpus-per-task={cores}
+            #SBATCH --account=jvmorr0
+            #SBATCH --mem={mem//10**9}G
+            #SBATCH --job-name={job_name}
+            #SBATCH --output={cur_dir}/log/{job_name}.out
+            #SBATCH --error={cur_dir}/log/{job_name}.err
+            cd {cur_dir}
+            module load Rtidyverse/4.3.1
+            R CMD INSTALL /nfs/turbo/sph-jvmorr/NESMR/esmr
+        submit_cmd: sbatch {job_file}
+        submit_cmd_output: "Submitted batch job {job_id}"
+        status_cmd: squeue --job {job_id}
+        kill_cmd: scancel {job_id}
+
+default:
+    queue: greatlakes
+    instances_per_job: 100
+    nodes_per_job: 1
+    cpus_per_instance: 1
+    mem_per_instance: 5G
+    time_per_instance: 15m
