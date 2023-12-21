@@ -71,8 +71,8 @@ full_model <- with(dat,
                         )
 )
 
-true_ll <- logLik(true_model)
-full_ll <- logLik(full_model)
+true_ll <- logLik.esmr(true_model)
+full_ll <- logLik.esmr(full_model)
 
 lrt_pvalue <- pchisq(
     - 2 * (true_ll - full_ll),
@@ -80,7 +80,7 @@ lrt_pvalue <- pchisq(
     lower.tail = FALSE
 )
 
-pval_dm <- full_ll$pvals_dm[3,2]
+pval_dm <- full_model$pvals_dm[3,2]
 cat('lrt_pvalue', lrt_pvalue, 'pval_dm', pval_dm, '\n')
 
 true_fbar <- true_model$f$fbar
