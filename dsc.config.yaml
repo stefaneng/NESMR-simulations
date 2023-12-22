@@ -21,6 +21,7 @@ DSC:
             #SBATCH --error={cur_dir}/log/{job_name}.err
             cd {cur_dir}
             module load Rtidyverse/4.3.1
+            module load glpk/5.0
             R CMD INSTALL /nfs/turbo/sph-jvmorr/NESMR/esmr
         submit_cmd: sbatch {job_file}
         submit_cmd_output: "Submitted batch job {job_id}"

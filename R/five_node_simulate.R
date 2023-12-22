@@ -117,7 +117,7 @@ if (! is_acyclic(mvmr_g)) {
   discovery_G <- discovery_G - fas
   # Missed edges
   print('New graph: ')
-  print(mvmr_G)
+  print(discovery_G)
 }
 
 missed_edges <- setNames(
