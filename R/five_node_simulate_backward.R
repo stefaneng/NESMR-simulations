@@ -250,7 +250,7 @@ if (all(results_df$keep_fdr == results_df$keep_bonferroni)) {
                              max_iter = 300))
 }
 
-# Add addition information about incorrect edges
+# Add additional information about incorrect edges
 results_df <- merge(results_df, extra_edges, by = c('from', 'to'), all = TRUE)
 results_df <- merge(results_df, missed_edges, by = c('from', 'to'), all = TRUE)
 
@@ -270,6 +270,7 @@ backward_select_edges <- list()
 
 backward_select_models <- list()
 i <- 1
+cat('Starting backward selection...\n')
 # While we still have large p-values...
 while(min_BF_log10_pval <= -log10(threshold) || i >= n) {
   backward_select_edges[[i]] <- as.matrix(backward_df[idx_min_BF_log10_pval, 1:2])
@@ -303,7 +304,10 @@ while(min_BF_log10_pval <= -log10(threshold) || i >= n) {
 
   idx_min_BF_log10_pval <- which.min(backward_df$backward_bf_adjust_log10)
   min_BF_log10_pval <- backward_df$backward_bf_adjust_log10[idx_min_BF_log10_pval]
+  i <- i + 1
 }
+
+cat('Selected', i, 'edges via backward selection...\n')
 
 backward_loglik <- setNames(
   lapply(backward_select_models, logLik.esmr),
@@ -317,3 +321,4 @@ names(loglik_results) <- c(
   "true", "discovery", "no_adj", "fdr", "bonferroni")
 
 loglik_results <- c(loglik_results, backward_loglik)
+print(loglik_results)
