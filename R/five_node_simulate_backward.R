@@ -43,33 +43,11 @@ G <- matrix(
   c(0, 0, 0, 0, 0,
     sqrt(0.3), 0, 0, 0, 0,
     0, 0, 0, 0, 0,
-    0, -1*sqrt(0.1), 0, 0, 0,
-    0, -1*sqrt(0.1), sqrt(0.2), sqrt(0.25), 0),
+    0, -1 * sqrt(0.1), 0, 0, 0,
+    0, -1 * sqrt(0.1), sqrt(0.2), sqrt(0.25), 0),
   nrow = 5,
   byrow = 5
 )
-
-h2 <- c(0.5, 0.3, 0.25, 0.4, 0.3)
-## simulate summary statistics
-data(ld_mat_list)
-data(AF)
-dat <- sim_mv(
-  G = G,
-  N = 40000,
-  J = 5e5,
-  h2 = h2,
-  pi = 500/5e5,
-  R_LD = ld_mat_list,
-  af = AF,
-  est_s = TRUE
-)
-
-Z <- with(dat, beta_hat/s_estimate);
-dat$pval <- 2*pnorm(-abs(Z));
-minp <- apply(dat$pval, 1, min)
-
-# ld pruning
-dat$ld_list_minp <- sim_ld_prune(dat, R_LD = ld_mat_list, pvalue = minp)
 
 minp <- apply(dat$pval, 1, min)
 
@@ -82,9 +60,7 @@ ix1 <- which(minp < 5e-8)
 B_true <- dat$direct_trait_effects
 B_true[!B_true == 0] <- 1
 
-five_node_g <- graph_from_adjacency_matrix(
-  B_true
-)
+five_node_g <- graph_from_adjacency_matrix(B_true)
 
 # which_beta gives the indices of the F matrix that should be estimated
 true_model <- with(dat,
@@ -122,7 +98,7 @@ mvmr_beta_df <- do.call(
 )
 
 ## Build adj matrix from MVMR results
-mvmr_beta_df$pval <- 2*pnorm(-abs(mvmr_beta_df$beta_m / mvmr_beta_df$beta_s))
+mvmr_beta_df$pval <- 2 * pnorm(-abs(mvmr_beta_df$beta_m / mvmr_beta_df$beta_s))
 mvmr_beta_df$pval_weights <- pmin(-log10(mvmr_beta_df$pval), 20)
 
 mvmr_beta_edgelist <- mvmr_beta_df %>%
@@ -260,27 +236,30 @@ results_df <- merge(results_df, missed_edges, by = c('from', 'to'), all = TRUE)
 # 3. refit the model missing the removed edge
 # 4. repeat until there are no p-values bigger than x
 # Just do for BF for now
-backward_df <- results_df[, c('from', 'to', 'discovery_bf_adjust_log10')]
-idx_min_BF_log10_pval <- which.min(results_df$discovery_bf_adjust_log10)
-min_BF_log10_pval <- results_df$discovery_bf_adjust_log10[idx_min_BF_log10_pval]
+backward_df <- results_df[, c('from', 'to', 'discovery_log10')]
+idx_log10_pval <- which.min(results_df$discovery_log10)
+min_log10_pval <- results_df$discovery_bf_adjust_log10[idx_log10_pval]
 # Copy discovery matrix
 backward_select_adj_mat <- discovery_adj_mat
 
 backward_select_edges <- list()
-
 backward_select_models <- list()
+backward_mod_results <- list()
+backward_select_pvals <- list()
+backward_results <- list()
 i <- 1
 cat('Starting backward selection...\n')
 # While we still have large p-values...
-while(min_BF_log10_pval <= -log10(threshold) || i >= n) {
-  backward_select_edges[[i]] <- as.matrix(backward_df[idx_min_BF_log10_pval, 1:2])
+while(min_log10_pval <= -log10(threshold) && i < n) {
+  cat('Backward select: ', i, '\n')
+  backward_select_edges[[i]] <- as.matrix(backward_df[idx_log10_pval, 1:2])
   # Remove highest p-value from adj matrix
   backward_select_adj_mat[
     backward_select_edges[[i]]
     ] <- 0
 
   # Fit the new model
-  backward_select_models[[i]] <- with(
+  last_backward_mod <- backward_select_models[[i]] <- with(
     dat,
     esmr(
       beta_hat_X = beta_hat[ix,],
@@ -290,24 +269,30 @@ while(min_BF_log10_pval <= -log10(threshold) || i >= n) {
       direct_effect_template = backward_select_adj_mat,
       max_iter = 300))
 
+
   # TODO Keep track of discovery_bf_adjust_log10?
-  backward_idx <- which(backward_select_adj_mat != 0, arr.ind = T)
+  backward_idx <- which(backward_select_adj_mat != 0, arr.ind = TRUE)
   backward_log_pvals <- backward_select_models[[i]]$pvals_dm[backward_idx]
-  backward_log10 <- pmin(- backward_log_pvals / log(10), 20)
-  # Use n from discovery number of edges
-  backward_bf_adjust_log10 <- - p.adjust.log(
-    - backward_log10, method = 'bonferroni', log.base = 10, n = n)
-
-  backward_df <- data.frame(
-    backward_idx, backward_bf_adjust_log10
+  backward_log10 <- backward_select_pvals[[i]] <- pmin(- backward_log_pvals / log(10), 20)
+  backward_df <- backward_mod_results[[i]] <- data.frame(
+    setNames(data.frame(backward_idx), c('from', 'to')),
+    backward_log10
   )
+  # backward_bf_adjust_log10 <- - p.adjust.log(
+  #   - backward_log10, method = 'bonferroni', log.base = 10, n = n)
 
-  idx_min_BF_log10_pval <- which.min(backward_df$backward_bf_adjust_log10)
-  min_BF_log10_pval <- backward_df$backward_bf_adjust_log10[idx_min_BF_log10_pval]
+  idx_log10_pval <- which.min(backward_log10)
+  min_log10_pval <- backward_log10[idx_log10_pval]
+
+  backward_results[[i]] <- cbind.data.frame(
+    backward_select_edges[[i]], backward_log10
+  )
+  print(backward_df)
+
   i <- i + 1
 }
 
-cat('Selected', i, 'edges via backward selection...\n')
+cat('Selected', i - 1, 'edges via backward selection...\n')
 
 backward_loglik <- setNames(
   lapply(backward_select_models, logLik.esmr),
