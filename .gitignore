@@ -3,3 +3,9 @@
 *.stdout
 **/.dsc
 *.log
+*.jpg
+*.png
+*.pdf
+*.db
+*.mpk
+*.html

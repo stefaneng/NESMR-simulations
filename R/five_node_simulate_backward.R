@@ -253,6 +253,11 @@ cat('Starting backward selection...\n')
 while(min_log10_pval <= -log10(threshold) && i < n) {
   cat('Backward select: ', i, '\n')
   backward_select_edges[[i]] <- as.matrix(backward_df[idx_log10_pval, 1:2])
+
+  backward_results[[i]] <- cbind.data.frame(
+    backward_select_edges[[i]], min_log10_pval
+  )
+
   # Remove highest p-value from adj matrix
   backward_select_adj_mat[
     backward_select_edges[[i]]
@@ -284,10 +289,13 @@ while(min_log10_pval <= -log10(threshold) && i < n) {
   idx_log10_pval <- which.min(backward_log10)
   min_log10_pval <- backward_log10[idx_log10_pval]
 
-  backward_results[[i]] <- cbind.data.frame(
-    backward_select_edges[[i]], backward_log10
-  )
-  print(backward_df)
+  merge_backward_df <- backward_df
+  names(merge_backward_df) <- c('from', 'to', paste0('backward_log10_', i))
+  results_df <- merge(
+    results_df, merge_backward_df,
+    by = c('from', 'to'),
+    all.x = TRUE
+    )
 
   i <- i + 1
 }

@@ -30,7 +30,7 @@ DSC:
 
 default:
     queue: greatlakes
-    instances_per_job: 100
+    instances_per_job: 25
     nodes_per_job: 1
     cpus_per_instance: 1
     mem_per_instance: 5G
