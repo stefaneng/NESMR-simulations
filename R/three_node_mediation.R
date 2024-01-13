@@ -18,28 +18,19 @@ h2 <- c(0.5, 0.3, 0.25)
 ## simulate summary statistics
 data(ld_mat_list)
 data(AF)
-    dat <- GWASBrewer::sim_mv(
+dat <- GWASBrewer::sim_mv(
     G = G,
     N = 40000,
     J = 5e5,
     h2 = h2,
     pi = 500/5e5,
-    R_LD = GWASBrewer::ld_mat_list,
-    af = AF,
     est_s = TRUE
 )
 
 Z <- with(dat, beta_hat/s_estimate)
 dat$pval <- 2*pnorm(-abs(Z))
-minp <- apply(dat$pval, 1, min)
-
-# ld pruning
-dat$ld_list_minp <- GWASBrewer::sim_ld_prune(dat, R_LD = GWASBrewer::ld_mat_list, pvalue = minp)
 
 minp <- apply(dat$pval, 1, min)
-
-ix <- dat$ld_list_minp
-minp <- apply(dat$pval[ix, ], 1, min)
 ix1 <- which(minp < 5e-8)
 
 # Incorrect configurations
@@ -53,21 +44,21 @@ B_inc_mediation <- matrix(
 
 true_model <- with(dat,
         esmr(
-        beta_hat_X = beta_hat[ix,],
-        se_X = s_estimate[ix,],
-        ix1 = ix1,
+        beta_hat_X = beta_hat[ix1,],
+        se_X = s_estimate[ix1,],
+        pval_thresh = 1,
         G = diag(3),
         direct_effect_template = B_true,
         max_iter = 300))
 
 incorrect_model <- with(dat,
         esmr(
-        beta_hat_X = beta_hat[ix,],
-        se_X = s_estimate[ix,],
-        ix1 = ix1,
-        G = diag(3),
-        direct_effect_template = B_inc_mediation,
-        max_iter = 300))
+          beta_hat_X = beta_hat[ix1,],
+          se_X = s_estimate[ix1,],
+          pval_thresh = 1,
+          G = diag(3),
+          direct_effect_template = B_inc_mediation,
+          max_iter = 300))
 
 true_ll <- logLik.esmr(true_model)
 incorrect_ll <- logLik.esmr(incorrect_model)
