@@ -24,6 +24,7 @@ dat <- GWASBrewer::sim_mv(
     J = 5e5,
     h2 = h2,
     pi = 500/5e5,
+    sporadic_pleiotropy = FALSE,
     est_s = TRUE
 )
 
