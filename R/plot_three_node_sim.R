@@ -88,26 +88,37 @@ qqman::qq(mediation_pvals_df$lrt_pvalues)
 dev.off()
 
 # Call the function for LRT P-values
-create_and_save_plots(pvals_df, "lrt_pvalues", "lrt", output_dir = output_collider_dir)
+create_and_save_plots(
+    pvals_df, "lrt_pvalues", "lrt", output_dir = output_collider_dir,
+    main = "3 Node Collider")
 
 # Call the function for Delta Method P-values
-# create_and_save_plots(pvals_df, "dm_pvalues", "delta_method", output_dir = output_dir)
+create_and_save_plots(
+    pvals_df, "dm_pvalues", "dm", output_dir = output_collider_dir,
+    main = "3 Node Collider")
 
 # Mediation p-values
-create_and_save_plots(mediation_pvals_df, "lrt_pvalues", "lrt", suffix = "medidation_no_pleiotropy", output_dir)
+create_and_save_plots(
+    mediation_pvals_df, "lrt_pvalues", "lrt", suffix = "medidation_no_pleiotropy", output_dir,
+    main = "3 Node Mediation\nNo Pleiotropy or LD")
 
 # Call the function for Delta Method P-values
-create_and_save_plots(mediation_pvals_df, "dm_pvalues", "delta_method", suffix = "medidation_no_pleiotropy", output_dir)
+create_and_save_plots(
+    mediation_pvals_df, "dm_pvalues", "delta_method", suffix = "medidation_no_pleiotropy", output_dir,
+    main = "3 Node Mediation\nNo Pleiotropy or LD")
 
 # Mediation p-values with LD
-create_and_save_plots(pvals_df_LD, "lrt_pvalues", "lrt", suffix = "medidation_with_LD", output_mediation_LD_dir)
+create_and_save_plots(
+    pvals_df_LD, "lrt_pvalues", "lrt", suffix = "medidation_with_LD", output_mediation_LD_dir,
+    main = "3 Node Mediation with LD")
 
 # Call the function for Delta Method P-values
-create_and_save_plots(pvals_df_LD, "dm_pvalues", "delta_method", suffix = "medidation_with_LD", output_mediation_LD_dir)
-
+create_and_save_plots(pvals_df_LD, "dm_pvalues", "delta_method", suffix = "medidation_with_LD", output_mediation_LD_dir,
+    main = "3 Node Mediation with LD")
 
 cat('mean(LD LRT p-values < 0.05) =', mean(dscout.mediation.LD$simulate.lrt_pvalue < 0.05, na.rm =TRUE), '\n')
 cat('mean(LD Delta method p-values < 0.05) =', mean(dscout.mediation.LD$simulate.dm_pvalue < 0.05, na.rm =TRUE), '\n')
 
 cat('mean(No LD LRT p-values < 0.05) =', mean(dscout.mediation$simulate.lrt_pvalue < 0.05, na.rm =TRUE), '\n')
 cat('mean(No LD Delta method p-values < 0.05) =', mean(dscout.mediation$simulate.dm_pvalue < 0.05, na.rm =TRUE), '\n')
+
