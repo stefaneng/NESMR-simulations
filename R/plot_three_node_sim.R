@@ -99,11 +99,11 @@ create_and_save_plots(mediation_pvals_df, "lrt_pvalues", "lrt", suffix = "medida
 # Call the function for Delta Method P-values
 create_and_save_plots(mediation_pvals_df, "dm_pvalues", "delta_method", suffix = "medidation_no_pleiotropy", output_dir)
 
-# Mediation p-values
-create_and_save_plots(mediation_pvals_df, "lrt_pvalues", "lrt", suffix = "medidation_no_pleiotropy", output_dir)
+# Mediation p-values with LD
+create_and_save_plots(pvals_df_LD, "lrt_pvalues", "lrt", suffix = "medidation_with_LD", output_mediation_LD_dir)
 
 # Call the function for Delta Method P-values
-create_and_save_plots(mediation_pvals_df, "dm_pvalues", "delta_method", suffix = "medidation_no_pleiotropy", output_dir)
+create_and_save_plots(pvals_df_LD, "dm_pvalues", "delta_method", suffix = "medidation_with_LD", output_mediation_LD_dir)
 
 
 cat('mean(LD LRT p-values < 0.05) =', mean(dscout.mediation.LD$simulate.lrt_pvalue < 0.05, na.rm =TRUE), '\n')
