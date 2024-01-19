@@ -1,4 +1,4 @@
-sim_three_node_mediation: three_node_mediation.R
+sim_three_node_mediation_no_pleiotropy: three_node_mediation.R
   $true_model: true_model
   $incorrect_model: incorrect_model
   $dm_pvalue: dm_pvalue
@@ -6,7 +6,7 @@ sim_three_node_mediation: three_node_mediation.R
 
 DSC:
   define:
-    simulate: sim_three_node_mediation
+    simulate: sim_three_node_mediation_no_pleiotropy
   run: simulate
   exec_path: R
-  output: three_node_mediation
+  output: three_node_mediation_no_LD

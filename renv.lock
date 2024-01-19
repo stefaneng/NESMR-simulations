@@ -11,18 +11,14 @@
   "Packages": {
     "GWASBrewer": {
       "Package": "GWASBrewer",
-      "Version": "0.3.0.0154",
+      "Version": "0.3.0.0163",
       "Source": "GitHub",
       "RemoteType": "github",
       "RemoteHost": "api.github.com",
       "RemoteUsername": "jean997",
       "RemoteRepo": "GWASBrewer",
-      "RemoteRef": "future",
-      "RemoteSha": "0fc52542ab56b0de761456a559c68af1b5276d79",
-      "Requirements": [
-        "R"
-      ],
-      "Hash": "3a76345b6dc09e2051af8f1dbfeca410"
+      "RemoteRef": "main",
+      "RemoteSha": "12155a54d0da53553f5d728688117132c31f825c"
     },
     "MASS": {
       "Package": "MASS",
@@ -1202,13 +1198,11 @@
     },
     "renv": {
       "Package": "renv",
-      "Version": "1.0.2",
-      "Source": "Repository",
+      "Version": "1.0.3",
+      "OS_type": null,
+      "NeedsCompilation": "no",
       "Repository": "CRAN",
-      "Requirements": [
-        "utils"
-      ],
-      "Hash": "4b22ac016fe54028b88d0c68badbd061"
+      "Source": "Repository"
     },
     "reticulate": {
       "Package": "reticulate",

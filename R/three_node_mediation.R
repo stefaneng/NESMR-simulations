@@ -16,8 +16,6 @@ B_true[!B_true == 0] <- 1
 
 h2 <- c(0.5, 0.3, 0.25)
 ## simulate summary statistics
-data(ld_mat_list)
-data(AF)
 dat <- GWASBrewer::sim_mv(
     G = G,
     N = 40000,
