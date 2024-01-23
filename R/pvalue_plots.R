@@ -1,21 +1,14 @@
 library(ggplot2)
 library(ggpubr)
 
-# Function to create and save plots
-create_and_save_plots <- function(pvals_df, pvalue_col, method_name = c('delta_method', 'lrt'), suffix = '', output_dir, main = "") {
-    method_name <- match.arg(method_name)
-    nice_name <- if (method_name == "delta_method") "Delta Method" else "LRT"
-    if (! startsWith(suffix, "_")) {
-        suffix <- paste0("_", suffix)
-    }
-    # Histogram
-    pvalue_hist <- ggplot(pvals_df) +
-        geom_histogram(aes(x = get(pvalue_col), after_stat(density)), breaks = seq(0, 1, by = 0.1)) +
-        theme_minimal() +
-        xlab(sprintf("%s P-values", nice_name)) +
-        theme(text = element_text(size = 24), plot.title = element_text(size = 20)) +
-        ggtitle(main)
-
+create_QQ_group_plot <- function(
+    pvals_df,
+    pvalue_col,
+    method_name = c('delta_method', 'lrt'),
+    suffix = '',
+    output_dir = ".",
+    main = "",
+    group = FALSE) {
     pvals <- pvals_df[[pvalue_col]]
 
     alpha <- 0.05
@@ -28,7 +21,7 @@ create_and_save_plots <- function(pvals_df, pvalue_col, method_name = c('delta_m
 
     pvalue_col <- 'pvals'
 
-    pvalue_qqplot_log <- data %>%
+    data %>%
         arrange(pvals) %>%
         mutate(
             observed = -log10(pvals),
@@ -42,9 +35,33 @@ create_and_save_plots <- function(pvals_df, pvalue_col, method_name = c('delta_m
         xlab(expression(atop("Expected", paste("(", -log[10], " p-value)")))) +
         ylab(bquote(atop(.(nice_name), paste("(", -log[10], " p-value)")))) +
         theme_minimal() +
+        ylim(c(0, 6)) +
+        theme(text = element_text(size = 24), plot.title = element_text(size = 20)) +
+        ggtitle(main)
+    }
+
+# Function to create and save plots
+create_and_save_plots <- function(
+    pvals_df,
+    pvalue_col,
+    method_name = c('delta_method', 'lrt'),
+    suffix = '',
+    output_dir = ".",
+    main = "") {
+    method_name <- match.arg(method_name)
+    nice_name <- if (method_name == "delta_method") "Delta Method" else "LRT"
+    if (! startsWith(suffix, "_")) {
+        suffix <- paste0("_", suffix)
+    }
+    # Histogram
+    pvalue_hist <- ggplot(pvals_df) +
+        geom_histogram(aes(x = get(pvalue_col), after_stat(density)), breaks = seq(0, 1, by = 0.1)) +
+        theme_minimal() +
+        xlab(sprintf("%s P-values", nice_name)) +
         theme(text = element_text(size = 24), plot.title = element_text(size = 20)) +
         ggtitle(main)
 
+    pvalue_qqplot_log <- create_QQ_plot(pvals_df, pvalue_col, method_name, suffix, output_dir, main)
     final_plot <- ggarrange(pvalue_hist, pvalue_qqplot_log, ncol = 2)
 
     ggsave(
