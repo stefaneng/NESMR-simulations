@@ -34,7 +34,8 @@ dat$pval <- 2*pnorm(-abs(Z))
 minp <- apply(dat$pval, 1, min)
 
 # ld pruning
-dat$ld_list_minp <- GWASBrewer::sim_ld_prune(dat, R_LD = GWASBrewer::ld_mat_list, pvalue = minp)
+
+dat$ld_list_minp <- GWASBrewer::sim_ld_prune(dat, R_LD = GWASBrewer::ld_mat_list, pvalue = minp,  r2_thresh = )
 
 minp <- apply(dat$pval, 1, min)
 

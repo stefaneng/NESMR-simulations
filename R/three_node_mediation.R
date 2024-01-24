@@ -40,7 +40,6 @@ dat$pval <- 2*pnorm(-abs(Z))
 
 pval_thresholds <- c(5e-8, 5e-9, 5e-10)
 
-# TODO: Better initialization
 true_model <- list()
 incorrect_model <- list()
 lrt_pvalue <- list()
