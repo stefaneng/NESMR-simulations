@@ -175,7 +175,7 @@ grouped_mediation_plot <- mediation_LD_pvals_df %>%
         theme_minimal() +
         ylim(c(0, 6)) +
         theme(text = element_text(size = 24), plot.title = element_text(size = 24)) +
-        ggtitle("3 Node Mediation No Pleiotropy or LD (Varying r2 threshold)")
+        ggtitle("3 Node LD (Varying r2 threshold)")
 
 ggsave(
     filename = print(
