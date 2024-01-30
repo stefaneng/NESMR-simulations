@@ -9,4 +9,4 @@
 *.db
 *.mpk
 *.html
-log/
+.Rproj.user

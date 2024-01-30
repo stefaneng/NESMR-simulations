@@ -3,183 +3,123 @@ renv::load('/nfs/turbo/sph-jvmorr/NESMR/simulations')
 devtools::load_all('/nfs/turbo/sph-jvmorr/NESMR/esmr')
 library(ggplot2)
 library(dscrutils)
-library(forcats)
-
-# source("/nfs/turbo/sph-jvmorr/NESMR/simulations/R/pvalue_plots.R")
 
 reticulate::use_condaenv('dsc')
 
+# https://genome.sph.umich.edu/wiki/Code_Sample:_Generating_QQ_Plots_in_R
+qlog10unif <- function(p) {
+  -log10(qunif(1 - p))
+}
+
+# Function to create and save plots
+create_and_save_plots <- function(pvals_df, pvalue_col, method_name = c('delta_method', 'lrt'), suffix = '', output_dir) {
+  method_name <- match.arg(method_name)
+  nice_name <- if (method_name == "delta_method") "Delta Method" else "LRT"
+  if (! startsWith(suffix, "_")) {
+    suffix <- paste0("_", suffix)
+  }
+  # Histogram
+  pvalue_hist <- ggplot(pvals_df) +
+    geom_histogram(aes(x = get(pvalue_col), after_stat(density)), breaks = seq(0, 1, by = 0.1)) +
+    theme_minimal() +
+    xlab(sprintf("%s P-values", nice_name)) +
+    theme(text = element_text(size = 24))
+
+  ggsave(
+    filename = file.path(
+      output_dir,
+      sprintf("%s_%s_pvalue_hist_dsc%s.jpg", Sys.Date(), method_name, suffix)),
+    units = "in", width = 5, height = 5,
+    plot = pvalue_hist
+  )
+
+  # QQ Plot Log
+  pvalue_qqplot_log <- pvals_df %>%
+    arrange(get(pvalue_col)) %>%
+    mutate(observed = -log10(get(pvalue_col)), expected = -log10(ppoints(nrow(pvals_df)))) %>%
+    ggplot(aes(x = expected, y = observed)) +
+    geom_point() +
+    geom_abline(slope = 1, intercept = 0, color = "red") +
+    xlab(expression(atop("Expected", paste("(", -log[10], " p-value)")))) +
+    ylab(bquote(atop(.(nice_name), paste("(", -log[10], " p-value)")))) +
+    theme_minimal() +
+    theme(text = element_text(size = 24))
+
+  ggsave(
+    filename = file.path(
+      output_dir,
+      sprintf("%s_%s_pvalue_qqplot_log_dsc.jpg", Sys.Date(), method_name)),
+    plot = pvalue_qqplot_log,
+    units = "in", width = 5, height = 5
+  )
+}
+
 # Define the output directory
-output_collider_dir <- "/nfs/turbo/sph-jvmorr/NESMR/simulations/three_node_collider/figures"
-output_mediation_dir <- "/nfs/turbo/sph-jvmorr/NESMR/simulations/three_node_mediation_no_LD_test/figures"
-output_mediation_LD_dir <- "/nfs/turbo/sph-jvmorr/NESMR/simulations/three_node_mediation_LD/figures"
+output_dir <- "/nfs/turbo/sph-jvmorr/NESMR/simulations/three_node_mediation_no_LD/figures"
 
-dscout.collider.LD <- dscquery(dsc.outdir = "/nfs/turbo/sph-jvmorr/NESMR/simulations/three_node_collider",
-                   targets    = c("simulate.dm_pvalue", "simulate.lrt_pvalue",
-                   "simulate.true_model", "simulate.incorrect_model"))
+# Load your data
+# dscout <- dscquery(dsc.outdir = "/nfs/turbo/sph-jvmorr/NESMR/simulations/three_node_mediation_no_LD",
+#                    targets    = c("simulate.dm_pvalue", "simulate.lrt_pvalue"),
+#                    ignore.missing.files = TRUE)
 
-dscout.mediation <- dscquery(dsc.outdir = "/nfs/turbo/sph-jvmorr/NESMR/simulations/three_node_mediation_no_LD_test",
-                   targets    = c("simulate.dm_pvalue", "simulate.lrt_pvalue",
-                   "simulate.true_model", "simulate.incorrect_model"))
+dscout.mediation <- dscquery(dsc.outdir = "/nfs/turbo/sph-jvmorr/NESMR/simulations/three_node_mediation_no_LD",
+                             targets    = c("simulate.dm_pvalue", "simulate.lrt_pvalue",
+                                            "simulate.true_model", "simulate.incorrect_model"),
+                             ignore.missing.files = TRUE)
 
+# reticulate::use_condaenv('base')
 
-dscout.mediation.LD <- dscquery(dsc.outdir = "/nfs/turbo/sph-jvmorr/NESMR/simulations/three_node_mediation_LD",
-                   targets    = c("simulate.dm_pvalue", "simulate.lrt_pvalue",
-                   "simulate.true_model", "simulate.incorrect_model"))
+# Note: This is just a temporary fix as I wrote the wrong target
+# lrt_pvalue <- unlist(lapply(seq_along(dscout.mediation$simulate.true_model), function(i) {
+#     true_model <- dscout.mediation$simulate.true_model[[i]]
+#     incorrect_model <- dscout.mediation$simulate.incorrect_model[[i]]
 
-r2_thresholds <- c(0.1, 0.01, 0.001, 0.0001)
-pval_thresholds <- c(5e-8, 5e-9, 5e-10)
+#     true_ll <- logLik.esmr(true_model)
+#     incorrect_ll <- logLik.esmr(incorrect_model)
 
-mediation_LD_pvals_df <- rbind.data.frame(
-    bind_rows(lapply(dscout.mediation.LD$simulate.dm_pvalue, function(x) {
-        do.call('rbind.data.frame', lapply(seq_along(x), function(i) {
-            y <- x[[i]]
-            data.frame(
-                pvalue = unlist(y),
-                pval_threshold = pval_thresholds,
-                r2_threshold = r2_thresholds[[i]],
-                pvalue_type = 'dm')
-        }))
-    })),
-    bind_rows(lapply(dscout.mediation.LD$simulate.lrt_pvalue, function(x) {
-            do.call('rbind.data.frame', lapply(seq_along(x), function(i) {
-                y <- x[[i]]
-                data.frame(
-                    pvalue = unlist(y),
-                    pval_threshold = pval_thresholds,
-                    r2_threshold = r2_thresholds[[i]],
-                    pvalue_type = 'lrt')
-            }))
-        }))
-    )
+#     lrt_pvalue <- pchisq(
+#         - 2 * (true_ll - incorrect_ll),
+#         df = 1,
+#         lower.tail = FALSE
+#     )
+# }))
 
+# sim_pvalues <- dscout$simulate.lrt_pvalue
+# dm_pvalues <- exp(dscout$simulate.pval_dm)
+# pvals_df <- data.frame(lrt_pvalues = sim_pvalues, dm_pvalues = dm_pvalues)
 
-collider_pvals_df <- do.call('rbind.data.frame',
-        lapply(seq_along(dscout.collider.LD$simulate.dm_pvalue), function(i) {
-        dm_pvals <- unlist(dscout.collider.LD$simulate.dm_pvalue[[i]])
-        lrt_pvals <- unlist(dscout.collider.LD$simulate.lrt_pvalue[[i]])
-        rbind.data.frame(
-            data.frame(
-                pvalue = unlist(dm_pvals), r2_threshold = r2_thresholds, pvalue_type = 'dm'),
-            data.frame(
-                pvalue = unlist(lrt_pvals), r2_threshold = r2_thresholds, pvalue_type = 'lrt'
-                )
-        )
-    }))
+mediation_pvals_df <- data.frame(
+  dm_pvalues = dscout.mediation$simulate.dm_pvalue,
+  lrt_pvalues = dscout.mediation$simulate.lrt_pvalue
+)
 
-mediation_pvals_df <- do.call('rbind.data.frame',
-        lapply(seq_along(dscout.mediation$simulate.dm_pvalue), function(i) {
-        dm_pvals <- unlist(dscout.mediation$simulate.dm_pvalue[[i]])
-        lrt_pvals <- unlist(dscout.mediation$simulate.lrt_pvalue[[i]])
-        rbind.data.frame(
-            data.frame(
-                pvalue = unlist(dm_pvals), pval_threshold = pval_thresholds, pvalue_type = 'dm',
-                beta_var = c(rep("beta_hat", 3), rep("beta_marg", 3))),
-            data.frame(
-                pvalue = unlist(lrt_pvals), pval_threshold = pval_thresholds, pvalue_type = 'lrt',
-                beta_var = c(rep("beta_hat", 3), rep("beta_marg", 3)))
-                )
-    }))
+# Call the function for LRT P-values
+# create_and_save_plots(pvals_df, "lrt_pvalues", "lrt", output_dir)
 
-n_pvals_collider <- nrow(collider_pvals_df) / (length(r2_thresholds) * 2)
-alpha <- 0.05
-lower_bound_collider <- qbeta(alpha / 2, seq_len(n_pvals_collider), rev(seq_len(n_pvals_collider)))
-upper_bound_collider <- qbeta(1 - alpha / 2, seq_len(n_pvals_collider), rev(seq_len(n_pvals_collider)))
+# Call the function for Delta Method P-values
+# create_and_save_plots(pvals_df, "dm_pvalues", "delta_method", output_dir)
 
-grouped_collider_plot <- collider_pvals_df %>%
-    group_by(pvalue_type, r2_threshold) %>%
-    arrange(pvalue) %>%
-    mutate(
-        r2_threshold = as.factor(r2_threshold),
-        observed = -log10(pvalue),
-        expected = -log10(ppoints(n_pvals_collider)),
-        lower_bound_log = -log10(lower_bound_collider),
-        upper_bound_log = -log10(upper_bound_collider)) %>%
-    ggplot() +
-    facet_grid(cols =  vars(pvalue_type)) +
-        geom_point(aes(x = expected, y = observed, color = r2_threshold)) +
-        geom_ribbon(aes(x = expected, y = observed, ymin = lower_bound_log, ymax = upper_bound_log), alpha = 0.2) +
-        geom_abline(slope = 1, intercept = 0, color = "red") +
-        xlab(expression(atop("Expected", paste("(", -log[10], " p-value)")))) +
-        ylab(expression(atop("Observed", paste("(", -log[10], " p-value)")))) +
-        theme_minimal() +
-        ylim(c(0, 6)) +
-        theme(text = element_text(size = 24), plot.title = element_text(size = 24)) +
-        ggtitle("3 Node Collider with varying r^2 threshold")
+# Mediation p-values
+create_and_save_plots(mediation_pvals_df, "lrt_pvalues", "lrt", suffix = "medidation_no_pleiotropy", output_dir)
 
-ggsave(
-    filename = print(
-        file.path(output_collider_dir, sprintf('%s_QQ_collider_3node_r2_thresholds.jpeg', Sys.Date()))),
-    plot = grouped_collider_plot,
-    units = "in", width = 12, height = 8
-    )
+# Call the function for Delta Method P-values
+create_and_save_plots(mediation_pvals_df, "dm_pvalues", "delta_method", suffix = "medidation_no_pleiotropy", output_dir)
 
-n_pvals_mediation <- nrow(mediation_pvals_df) / (2 * 2 * 3)
-lower_bound_mediation <- qbeta(alpha / 2, seq_len(n_pvals_mediation), rev(seq_len(n_pvals_mediation)))
-upper_bound_mediation <- qbeta(1 - alpha / 2, seq_len(n_pvals_mediation), rev(seq_len(n_pvals_mediation)))
+# Scatter plots of p-values
 
-grouped_mediation_plot <- mediation_pvals_df %>%
-    group_by(pvalue_type, pval_threshold, beta_var) %>%
-    arrange(pvalue) %>%
-    mutate(
-        pval_threshold = as.factor(pval_threshold),
-        observed = -log10(pvalue),
-        expected = -log10(ppoints(n_pvals_mediation)),
-        lower_bound_log = -log10(lower_bound_mediation),
-        upper_bound_log = -log10(upper_bound_mediation)) %>%
-    ggplot() +
-    facet_grid(cols =  vars(pvalue_type), rows = vars(beta_var)) +
-        geom_point(aes(x = expected, y = observed, color = pval_threshold)) +
-        geom_ribbon(aes(x = expected, y = observed, ymin = lower_bound_log, ymax = upper_bound_log), alpha = 0.2) +
-        geom_abline(slope = 1, intercept = 0, color = "red") +
-        xlab(expression(atop("Expected", paste("(", -log[10], " p-value)")))) +
-        ylab(expression(atop("Observed", paste("(", -log[10], " p-value)")))) +
-        theme_minimal() +
-        ylim(c(0, 6)) +
-        theme(text = element_text(size = 24), plot.title = element_text(size = 24)) +
-        ggtitle("3 Node Mediation No Pleiotropy or LD")
+# scatter_pvals <- ggplot(pvals_df, aes(x = dm_pvalues, y = lrt_pvalues)) +
+#     geom_point() +
+#     theme_minimal() +
+#     xlab("Delta Method p-value") +
+#     ylab("LRT p-value") +
+#     geom_abline(slope = 1, color = "red") +
+#     theme(text = element_text(size = 24))
 
-ggsave(
-    filename = print(
-        file.path(output_mediation_dir, sprintf('%s_QQ_mediation_3node_pval_thresholds.jpeg', Sys.Date()))),
-    plot = grouped_mediation_plot,
-    units = "in", width = 12, height = 8
-    )
+#  ggsave(
+#     filename = print(sprintf("/nfs/turbo/sph-jvmorr/NESMR/simulations/three_node/results/%s_scatter_pvalues_dm_lrt.jpg", Sys.Date())),
+#     plot = scatter_pvals,
+#     units = "in", width = 5, height = 5
+# )
 
-
-## LD r2 threshold
-n_pvals_mediation_LD <- nrow(mediation_LD_pvals_df) / (length(pval_thresholds) * length(r2_thresholds) * 2)
-lower_bound_mediation_LD <- qbeta(alpha / 2, seq_len(n_pvals_mediation_LD), rev(seq_len(n_pvals_mediation_LD)))
-upper_bound_mediation_LD <- qbeta(1 - alpha / 2, seq_len(n_pvals_mediation_LD), rev(seq_len(n_pvals_mediation_LD)))
-
-mediation_LD_pvals_df$r2_threshold_f <- fct_rev(as.factor(mediation_LD_pvals_df$r2_threshold))
-
-grouped_mediation_plot <- mediation_LD_pvals_df %>%
-    group_by(pvalue_type, pval_threshold, r2_threshold_f) %>%
-    arrange(pvalue) %>%
-    mutate(
-        pval_threshold = as.factor(pval_threshold),
-        observed = -log10(pvalue),
-        expected = -log10(ppoints(n_pvals_mediation_LD)),
-        lower_bound_log = -log10(lower_bound_mediation_LD),
-        upper_bound_log = -log10(upper_bound_mediation_LD)) %>%
-    ggplot() +
-    facet_grid(
-        cols = vars(pvalue_type), rows =  vars(r2_threshold_f),
-        labeller = labeller(.rows = function(x) paste0('r2 < ', x))) +
-        geom_point(aes(x = expected, y = observed, color = pval_threshold)) +
-        geom_ribbon(aes(x = expected, y = observed, ymin = lower_bound_log, ymax = upper_bound_log), alpha = 0.2) +
-        geom_abline(slope = 1, intercept = 0, color = "red") +
-        xlab(expression(atop("Expected", paste("(", -log[10], " p-value)")))) +
-        ylab(expression(atop("Observed", paste("(", -log[10], " p-value)")))) +
-        theme_minimal() +
-        ylim(c(0, 6)) +
-        theme(text = element_text(size = 24), plot.title = element_text(size = 24)) +
-        ggtitle("3 Node LD (Varying r2 threshold)")
-
-ggsave(
-    filename = print(
-        file.path(output_mediation_LD_dir, sprintf('%s_QQ_mediation_3node_pval_r2_thresholds.jpeg', Sys.Date()))),
-    plot = grouped_mediation_plot,
-    units = "in", width = 12, height = 10
-    )
+cat('mean(LRT p-values < 0.05) =', mean(dscout.mediation$simulate.lrt_pvalue < 0.05, na.rm =TRUE), '\n')
+cat('mean(Delta method p-values < 0.05) =', mean(dscout.mediation$simulate.dm_pvalue < 0.05, na.rm =TRUE), '\n')
