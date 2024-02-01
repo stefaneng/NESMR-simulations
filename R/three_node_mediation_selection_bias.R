@@ -3,6 +3,10 @@ library(dplyr)
 library(ggplot2)
 library(forcats)
 library(reshape2)
+library(parallel)
+
+# Note: This was not run on cluster but on local machine
+#  This illustrates that we have winner's curse
 
 G <- matrix(
   c(0, 0, 0,
