@@ -1,0 +1,188 @@
+---
+title: "Five Node Discovery Simulation"
+author: Stefan Eng
+date: 2024-02-08
+execute:
+  echo: false
+editor: source
+---
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+library(DiagrammeRsvg)
+library(DiagrammeR)
+library(rsvg)
+library(dplyr)
+library(tidyr)
+library(igraph)
+library(kableExtra)
+library(knitr)
+
+correct_edges <- cbind(
+  read.csv('correct_edges.csv'),
+  winners_curse = TRUE)
+correct_edges_no_LD <- cbind(
+  read.csv('correct_edges_no_LD.csv'),
+  winners_curse = FALSE)
+
+# join rows of correct_edges and correct_edges_no_LD
+# correct_edges <- rbind(correct_edges, correct_edges_no_LD)
+
+correct_edges$Result <- factor(correct_edges$KeepEdge.Actual, levels = c('TRUE.TRUE', 'TRUE.FALSE', 'FALSE.TRUE', 'FALSE.FALSE'))
+
+correct_edges_no_LD$Result <- factor(correct_edges_no_LD$KeepEdge.Actual, levels = c('TRUE.TRUE', 'TRUE.FALSE', 'FALSE.TRUE', 'FALSE.FALSE'))
+
+levels(correct_edges$Result) <- levels(correct_edges_no_LD$Result) <- c('True Positive', 'Extra Edge', 'Missing Edge', 'True Remove')
+
+G <- matrix(
+  c(0, 0, 0, 0, 0,
+    sqrt(0.3), 0, 0, 0, 0,
+    0, 0, 0, 0, 0,
+    0, -1*sqrt(0.1), 0, 0, 0,
+    0, -1*sqrt(0.1), sqrt(0.2), sqrt(0.25), 0),
+  nrow = 5,
+  byrow = 5
+)
+
+B_true <-G
+B_true[!B_true == 0] <- 1
+
+extra_edges <- which(lower.tri(B_true) & ! B_true, arr.ind = TRUE)
+
+five_node_g <- graph_from_adjacency_matrix(
+  apply(G != 0, c(1,2), as.integer)
+)
+```
+
+## Algorithm outline
+
+1. For each variable $X_1,\ldots, X_k$, treat $X_i$ as the outcome and $X_{-i} = X_1, \ldots, X_{i - 1}, X_{i + 1}, \ldots, X_{k}$ as the exposures and run MVMR using esmr.
+2. Build super graph with all edges that have p-values < 0.05.
+3. Make super graph acyclic by solving weighted minimal feedback arc set problem with weights as $-\text{log}_{10}(p\text{-values})$ with upper limit of 20.
+4. Fit this model using nesmr and call this the Discovery Model
+5. Using delta method p-values, only keep edges that have p-values (or FDR/Bonferroni adjusted p-values) < 0.05. Call these the FDR, No Adjust, and Bonferroni models which may be the same model
+6. Perform backward selection algorithm
+  - Remove the edge with the largest p-value > 0.05
+  - If there is no such edge, stop.
+
+## True Graph
+
+| |$X_1$ |$X_2$|$X_3$|$X_4$|$X_5$|
+|------ |------|-------|------|-----|---|
+|$X_1$ | 0 | 0  | 0 | 0 | 0 |
+|$X_2$ | $\sqrt{0.3}$ | 0  | 0 | 0 | 0 |
+|$X_3$ | 0 | 0  | 0 | 0 | 0 |
+|$X_4$ | 0 | -$\sqrt{0.1}$ | 0 | 0 | 0 |
+|$X_5$ | 0 | -$\sqrt{0.1}$ | $\sqrt{0.2}$ | $\sqrt{0.25}$ | 0 |
+
+## True Graph
+
+```{r}
+render_graph(from_igraph(five_node_g), title = 'True Graph') %>%
+  export_svg() %>%
+  charToRaw %>% 
+  rsvg_png("true_five_node_graph.png", height = 1200, width = 800)
+```
+
+![MVMR graph](true_five_node_graph.png)
+  
+## Results
+
+500 simulations were performed using the algorithm described above.
+There are five correct edges and all five were identified in every simulation (True Positives = 5 and Missing Edges = 0).
+There are more edges than expected when using the backward selection algorithm
+
+## Extra Edge Tally
+
+```{r}
+# Make the kable table have two columns split by winners_curse column
+
+kable_correct <- select(correct_edges, -KeepEdge.Actual, -winners_curse) %>%
+  relocate(method) %>%
+  relocate(Result)
+# reorder columns names in kable_correct with method and Result first using dplyr
+
+merged_correct_edges <- merge(
+  kable_correct,
+  select(correct_edges_no_LD, -KeepEdge.Actual, -winners_curse),
+  by = c('Result', 'method'),
+  suffixes = c('_winners_curse', '_no_winners_curse')
+) %>%
+  arrange(Result, method)
+
+k <- ncol(correct_edges) - 4
+kable(select(merged_correct_edges, -Result),
+      digits = 2,
+      col.names = c(colnames(kable_correct)[-1], colnames(kable_correct)[-c(1,2)])) %>%
+  add_header_above(c(` ` = 1, `Winners Curse` = k, `No Winners Curse` = k)) %>%
+  pack_rows(index = setNames(rep(4, nlevels(merged_correct_edges$Result)), levels(merged_correct_edges$Result)))
+```
+
+The edges that appear the most are 5->1 and 4->1.
+These are both edges that have an indirect path (5->2->1 and 4->2->1) so this could affect it.
+My first though was to confirm that each of these extra edges has correct p-value distribution outside of the backward selection algorithm
+
+## Extra Edge p-value simulation
+
+1. Simulate from the true graph
+2. Test each of the extra possible edges on lower triangular
+  - Use LRT and Delta Method p-values
+3. Check calibration of p-values < 0.05  
+3. Plot (log) p-values and qq-plots to assess
+
+## P-value calibration
+
+| row | col | LRT mean(p-val < 0.05) | DM mean(p-val < 0.05) |
+|-----|-----|------------------------|-----------------------|
+| 3   | 1   | 0.126                  | 0.08                  |
+| 3   | 2   | 0.052                  | 0.114                 |
+| 4   | 1   | 0.45                   | 0.202                 |
+| 4   | 3   | 0.048                  | 0.076                 |
+| 5   | 1   | 0.448                  | 1                     |
+
+
+# Results
+
+## Calibration
+
+
+| edge | LRT mean(p-val < 0.05) | DM mean(p-val < 0.05) |
+|--- |------------------------|-----------------------|
+| 3 -> 1   | 0.126                  | 0.08                  |
+| 3 -> 2   | 0.052                  | 0.114                 |
+| 4 -> 1   | 0.45                   | 0.202                 |
+| 4 -> 3   | 0.048                  | 0.076                 |
+| 5 -> 1   | 0.448                  | 1                     |
+
+
+<!-- ```{r, results='asis'} -->
+<!-- # Run this then copy paste -->
+<!-- for(e in apply(extra_edges, 1, paste0, collapse = '_')) { -->
+<!--   cat(sprintf('## Edge: %1$s  -->
+<!-- :::: {.columns} -->
+
+<!-- ::: {.column width="50%%"} -->
+<!--   ![](figures/2024-01-11_delta_method_%1$s_pvalue_hist_dsc.jpg) -->
+<!-- ::: -->
+
+<!-- ::: {.column width="50%%"} -->
+<!--   ![](figures/2024-01-11_lrt_%1$s_pvalue_hist_dsc.jpg) -->
+<!-- ::: -->
+
+<!-- :::: -->
+
+<!-- ## Edge: %1$s -->
+<!-- :::: {.columns} -->
+
+<!-- ::: {.column width="50%%"} -->
+<!--   ![](figures/2024-01-11_delta_method_%1$s_pvalue_qqplot_log_dsc.jpg) -->
+<!-- ::: -->
+
+<!-- ::: {.column width="50%%"} -->
+<!--   ![](figures/2024-01-11_lrt_%1$s_pvalue_qqplot_log_dsc.jpg) -->
+<!-- ::: -->
+
+<!-- ::::\n\n', e)) -->
+<!-- } -->
+
+<!-- ``` -->
+
