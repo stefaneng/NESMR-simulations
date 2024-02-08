@@ -18,7 +18,7 @@ G <- matrix(
 )
 
 # Load your data
-dscout <- dscquery(dsc.outdir = "/nfs/turbo/sph-jvmorr/NESMR/simulations/five_node_discovery",
+dscout <- dscquery(dsc.outdir = "/nfs/turbo/sph-jvmorr/NESMR/simulations/five_node_discovery_no_LD_winners_curse",
                    targets    = c(
                     "discovery_algo.loglik_results", "discovery_algo.results_df", "discovery_algo.DSC_TIME",
                     "discovery_algo.backward_select_edges", "discovery_algo.discovery_model",
@@ -108,11 +108,14 @@ for (i in seq_len(n)) {
     mutate(edge = sprintf('%s->%s', from, to)) %>%
     pull(edge) %>%
     as.list()
-
-
 }
 
 # Overall extra edges in discovery
-as.data.frame(table(unlist(discovery_extra_edges)))
+as.data.frame(table(unlist(discovery_extra_edges))) %>%
+  setNames(c('edge', 'discovery_count')) %>%
+  left_join(
+    as.data.frame(table(unlist(backward_extra_edges))) %>%
+    setNames(c('edge', 'backward_select_count')),
+    by = 'edge')
 
-as.data.frame(table(unlist(backward_extra_edges)))
+

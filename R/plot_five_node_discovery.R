@@ -17,12 +17,14 @@ G <- matrix(
   byrow = 5
 )
 
+sim_path <- '/nfs/turbo/sph-jvmorr/NESMR/simulations/five_node_discovery_no_LD_winners_curse'
+
 # Load your data
-dscout <- dscquery(dsc.outdir = "/nfs/turbo/sph-jvmorr/NESMR/simulations/five_node_discovery_backward",
-                   targets    = c("simulate.loglik_results", "simulate.results_df", "simulate.DSC_TIME", "simulate.backward_select_edges"),
+dscout <- dscquery(dsc.outdir = sim_path,
+                   targets    = c("discovery_algo.loglik_results", "discovery_algo.results_df", "discovery_algo.DSC_TIME", "discovery_algo.backward_select_edges"),
                    ignore.missing.files = TRUE)
 
-loglik_results <- do.call("rbind.fill", lapply(dscout$simulate.loglik_results, as.data.frame))
+loglik_results <- do.call("rbind.fill", lapply(dscout$discovery_algo.loglik_results, as.data.frame))
 
 B_true <- G
 B_true[abs(G) > 0] <- 1
@@ -37,18 +39,18 @@ correct_edges <- cbind(
 
 pval_adj_methods <- c('keep_no_adjust', 'keep_bonferroni', 'keep_fdr', 'keep_backward')
 
-head(dscout$simulate.results_df)
+head(dscout$discovery_algo.results_df)
 
 bse <- lapply(
-    seq_along(dscout$simulate.backward_select_edges),
+    seq_along(dscout$discovery_algo.backward_select_edges),
     function(i) {
-        x <- dscout$simulate.backward_select_edges[[i]]
+        x <- dscout$discovery_algo.backward_select_edges[[i]]
         tryCatch({
             removed_edges <- cbind(
                 do.call('rbind.data.frame', lapply(x, `colnames<-`, c('from', 'to'))),
                 removed_backward = TRUE,
                 i = i)
-                left_join(dscout$simulate.results_df[[i]], removed_edges, by = c('from', 'to'))
+                left_join(dscout$discovery_algo.results_df[[i]], removed_edges, by = c('from', 'to'))
         },
         error = function(e) NULL
         )
@@ -61,7 +63,7 @@ bse <- bse[sapply(bse, Negate(is.null))]
 edge_results <- do.call('rbind.data.frame',
     lapply(seq_along(bse), function(i) {
         x <- bse[[i]]
-        x <- merge(x, true_edges, by = c("from", "to"), all = TRUE)
+        x <- merge(x, correct_edges, by = c("from", "to"), all = TRUE)
         x$correct_edge[is.na(x$correct_edge)] <- FALSE
         x$removed_backward[is.na(x$removed_backward)] <- FALSE
         x$keep_backward <- ! x$removed_backward
@@ -90,4 +92,4 @@ edge_results %>%
         max = max(Freq),
         mean = mean(Freq)
     ) %>%
-    write.csv(file = "simulations/five_node_discovery/results/correct_edges.csv", row.names = FALSE)
+    write.csv(file = print(file.path(sim_path, 'results', "correct_edges_no_LD.csv")), row.names = FALSE)

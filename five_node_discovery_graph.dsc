@@ -23,4 +23,4 @@ DSC:
     analyze: discovery_algo
   run: simulate * analyze
   exec_path: R
-  output: five_node_discovery
+  output: five_node_discovery_no_LD_winners_curse

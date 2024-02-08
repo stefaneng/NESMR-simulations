@@ -49,11 +49,11 @@ G <- matrix(
   byrow = 5
 )
 
-minp <- apply(dat$pval, 1, min)
-
-ix <- dat$ld_list_minp
-minp <- apply(dat$pval[ix,], 1, min)
-ix1 <- which(minp < 5e-8)
+# Remove winner's curse bias
+Ztrue <- with(dat, beta_marg/se_beta_hat)
+pval_true <- 2*pnorm(-abs(Ztrue))
+minp <- apply(pval_true, 1, min)
+ix <- which(minp < 5e-8)
 
 ## 0. Fit true model
 
@@ -67,7 +67,7 @@ true_model <- with(dat,
                    esmr(
                      beta_hat_X = beta_hat[ix,],
                      se_X = s_estimate[ix,],
-                     ix1 = ix1,
+                     pval_thresh = 1,
                      G = diag(5), # required for network problem
                      direct_effect_template = B_true))
 
@@ -79,7 +79,7 @@ MVMR_models <- lapply(seq_len(nrow(G)), function(i) {
             se_Y = s_estimate[ix,i],
             beta_hat_X = beta_hat[ix,-i],
             se_X = s_estimate[ix,-i],
-            ix1 = ix1, # the subset of variants esmr will fit with
+            pval_thresh = 1,
             augment_G = TRUE,
             beta_joint = TRUE)
   )
@@ -141,7 +141,7 @@ discovery_model <- with(dat,
                         esmr(
                           beta_hat_X = beta_hat[ix,],
                           se_X = s_estimate[ix,],
-                          ix1 = ix1,
+                          pval_thresh = 1,
                           G = diag(5), # required for network problem
                           direct_effect_template = discovery_adj_mat,
                           max_iter = 300))
@@ -182,7 +182,7 @@ no_adj_model <- with(dat,
                      esmr(
                        beta_hat_X = beta_hat[ix,],
                        se_X = s_estimate[ix,],
-                       ix1 = ix1,
+                       pval_thresh = 1,
                        G = diag(5), # required for network problem
                        direct_effect_template = adj_mat,
                        max_iter = 300))
@@ -201,7 +201,7 @@ if (all(results_df$keep_no_adjust == results_df$keep_fdr)) {
                     esmr(
                       beta_hat_X = beta_hat[ix,],
                       se_X = s_estimate[ix,],
-                      ix1 = ix1,
+                      pval_thresh = 1,
                       G = diag(5), # required for network problem
                       direct_effect_template = fdr_adj_mat,
                       max_iter = 300))
@@ -220,7 +220,7 @@ if (all(results_df$keep_fdr == results_df$keep_bonferroni)) {
                            esmr(
                              beta_hat_X = beta_hat[ix,],
                              se_X = s_estimate[ix,],
-                             ix1 = ix1,
+                             pval_thresh = 1,
                              G = diag(5), # required for network problem
                              direct_effect_template = bf_adj_mat,
                              max_iter = 300))
@@ -269,7 +269,7 @@ while(min_log10_pval <= -log10(threshold) && i < n) {
     esmr(
       beta_hat_X = beta_hat[ix,],
       se_X = s_estimate[ix,],
-      ix1 = ix1,
+      pval_thresh = 1,
       G = diag(5), # required for network problem
       direct_effect_template = backward_select_adj_mat,
       max_iter = 300))
