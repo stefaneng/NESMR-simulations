@@ -117,72 +117,13 @@ kable(select(merged_correct_edges, -Result),
   pack_rows(index = setNames(rep(4, nlevels(merged_correct_edges$Result)), levels(merged_correct_edges$Result)))
 ```
 
-The edges that appear the most are 5->1 and 4->1.
-These are both edges that have an indirect path (5->2->1 and 4->2->1) so this could affect it.
-My first though was to confirm that each of these extra edges has correct p-value distribution outside of the backward selection algorithm
+```{r}
+structure(list(edge = structure(1:8, levels = c("1->3", "2->3", 
+"3->1", "3->2", "3->4", "4->1", "4->3", "5->1"), class = "factor"), 
+    discovery_count = c(5L, 9L, 155L, 195L, 423L, 500L, 20L, 
+    500L), backward_select_count = c(4L, 2L, 15L, 20L, 16L, 37L, 
+    2L, 251L)), class = "data.frame", row.names = c(NA, -8L)) %>%
+  kable() %>%
+  kable_styling()
 
-## Extra Edge p-value simulation
-
-1. Simulate from the true graph
-2. Test each of the extra possible edges on lower triangular
-  - Use LRT and Delta Method p-values
-3. Check calibration of p-values < 0.05  
-3. Plot (log) p-values and qq-plots to assess
-
-## P-value calibration
-
-| row | col | LRT mean(p-val < 0.05) | DM mean(p-val < 0.05) |
-|-----|-----|------------------------|-----------------------|
-| 3   | 1   | 0.126                  | 0.08                  |
-| 3   | 2   | 0.052                  | 0.114                 |
-| 4   | 1   | 0.45                   | 0.202                 |
-| 4   | 3   | 0.048                  | 0.076                 |
-| 5   | 1   | 0.448                  | 1                     |
-
-
-# Results
-
-## Calibration
-
-
-| edge | LRT mean(p-val < 0.05) | DM mean(p-val < 0.05) |
-|--- |------------------------|-----------------------|
-| 3 -> 1   | 0.126                  | 0.08                  |
-| 3 -> 2   | 0.052                  | 0.114                 |
-| 4 -> 1   | 0.45                   | 0.202                 |
-| 4 -> 3   | 0.048                  | 0.076                 |
-| 5 -> 1   | 0.448                  | 1                     |
-
-
-<!-- ```{r, results='asis'} -->
-<!-- # Run this then copy paste -->
-<!-- for(e in apply(extra_edges, 1, paste0, collapse = '_')) { -->
-<!--   cat(sprintf('## Edge: %1$s  -->
-<!-- :::: {.columns} -->
-
-<!-- ::: {.column width="50%%"} -->
-<!--   ![](figures/2024-01-11_delta_method_%1$s_pvalue_hist_dsc.jpg) -->
-<!-- ::: -->
-
-<!-- ::: {.column width="50%%"} -->
-<!--   ![](figures/2024-01-11_lrt_%1$s_pvalue_hist_dsc.jpg) -->
-<!-- ::: -->
-
-<!-- :::: -->
-
-<!-- ## Edge: %1$s -->
-<!-- :::: {.columns} -->
-
-<!-- ::: {.column width="50%%"} -->
-<!--   ![](figures/2024-01-11_delta_method_%1$s_pvalue_qqplot_log_dsc.jpg) -->
-<!-- ::: -->
-
-<!-- ::: {.column width="50%%"} -->
-<!--   ![](figures/2024-01-11_lrt_%1$s_pvalue_qqplot_log_dsc.jpg) -->
-<!-- ::: -->
-
-<!-- ::::\n\n', e)) -->
-<!-- } -->
-
-<!-- ``` -->
-
+```
