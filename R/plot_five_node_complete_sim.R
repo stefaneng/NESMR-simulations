@@ -173,3 +173,14 @@ qqplot_log10 <- pvalue_results %>%
       )
   )
 
+
+ggsave(
+  filename = print(file.path(
+    output_dir,
+    sprintf("%s_log10_qqplot.jpg", Sys.Date()
+    ))
+  ),
+  plot = qqplot_log10,
+  units = "in",
+  width = 14, height = 10
+)
