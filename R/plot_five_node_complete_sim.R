@@ -102,11 +102,12 @@ ggsave(
 
 
 ## P-value histogram plot
-pvalue_hist <- long_sim_results_df %>%
+pvalue_results <- long_sim_results_df %>%
   filter(correct_edge == FALSE & !is.na(log10_pvals)) %>%
   mutate(pval = 10^log10_pvals,
-         model = ifelse(model == 'complete_model', 'Complete DAG', 'One Extra Edge')) %>%
-  ggplot(.) +
+         model = ifelse(model == 'complete_model', 'Complete DAG', 'One Extra Edge'))
+
+pvalue_hist <- ggplot(pvalue_results) +
     geom_histogram(
       aes(x = pval, after_stat(density)), breaks = seq(0, 1, by = 0.1)) +
   facet_grid(
@@ -138,3 +139,37 @@ ggsave(
   units = "in",
   width = 14, height = 10
 )
+
+## QQ plot
+qqplot_log10 <- pvalue_results %>%
+  group_by(model, edge) %>%
+  arrange(pval) %>%
+  mutate(
+    observed = -log10_pvals,
+    expected = -log10(ppoints(length(log10_pvals))),
+    lower_bound_log = -log10(qbeta(0.025, seq_along(expected), rev(seq_along(expected)))),
+    upper_bound_log = -log10(qbeta(0.975, seq_along(expected), rev(seq_along(expected))))
+  ) %>%
+  ggplot(aes(x = expected, y = observed)) +
+  geom_point() +
+  geom_ribbon(aes(ymin = lower_bound_log, ymax = upper_bound_log), alpha = 0.2) +
+  facet_grid(
+    rows = vars(model),
+    cols = vars(edge),
+    scales = 'free_y'
+  ) +
+  geom_abline(slope = 1, intercept = 0, color = "red") +
+  xlab(expression(atop("Expected", paste("(", -log[10], " p-value)")))) +
+  ylab(bquote(atop("Observed", paste("(", -log[10], " p-value)")))) +
+  theme_minimal() +
+  theme(text = element_text(size = 24)) +
+    labs(
+    title = expression("Five node simulation complete DAG and one edge", -log[10],  "QQ plots"),
+    caption = bquote(
+        atop(
+            "Sim parameters:" ~ h^2 ~ "=" ~ .(paste0(h2, collapse = ',')) ~ ", N = " ~ .(N) ~ ", J = " ~ .(J) ~ "," ~ pi ~ " = " ~ .(pi),
+            "No LD or pleiotropy"
+        )
+      )
+  )
+
