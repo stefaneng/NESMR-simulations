@@ -99,3 +99,42 @@ ggsave(
   units = "in",
   width = 12, height = 14
 )
+
+
+## P-value histogram plot
+pvalue_hist <- long_sim_results_df %>%
+  filter(correct_edge == FALSE & !is.na(log10_pvals)) %>%
+  mutate(pval = 10^log10_pvals,
+         model = ifelse(model == 'complete_model', 'Complete DAG', 'One Extra Edge')) %>%
+  ggplot(.) +
+    geom_histogram(
+      aes(x = pval, after_stat(density)), breaks = seq(0, 1, by = 0.1)) +
+  facet_grid(
+    rows = vars(model),
+    cols = vars(edge),
+    scales = 'free_y'
+  ) +
+  theme_minimal() +
+  theme(text = element_text(size = 24), plot.title = element_text(size = 24), axis.text.x = element_text(angle = 90)) +
+  xlab("P-values") +
+  labs(
+    title = "Five node simulation complete DAG and one edge p-value distribution",
+    caption = # add h2, N, J, pi to caption formated as expression. Use an expression or bquote to turn h^2 and pi into mathematically notation
+      bquote(
+        atop(
+            "Sim parameters:" ~ h^2 ~ "=" ~ .(paste0(h2, collapse = ',')) ~ ", N = " ~ .(N) ~ ", J = " ~ .(J) ~ "," ~ pi ~ " = " ~ .(pi),
+            "No LD or pleiotropy"
+        )
+      )
+  )
+
+ggsave(
+  filename = print(file.path(
+    output_dir,
+    sprintf("%s_pvalue_hist.jpg", Sys.Date()
+    ))
+  ),
+  plot = pvalue_hist,
+  units = "in",
+  width = 14, height = 10
+)
