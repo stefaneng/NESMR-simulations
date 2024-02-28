@@ -65,22 +65,36 @@ five_node_g <- graph_from_adjacency_matrix(B_true)
 # which_beta gives the indices of the F matrix that should be estimated
 true_model <- with(dat,
                    esmr(
-                     beta_hat_X = beta_hat[ix,],
-                     se_X = s_estimate[ix,],
+                     beta_hat_X = beta_hat,
+                     se_X = s_estimate,
+                     variant_ix = ix,
                      pval_thresh = 1,
                      G = diag(5), # required for network problem
                      direct_effect_template = B_true))
 
 ## 1. esmr to generate super graph
 
+
+
 MVMR_models <- lapply(seq_len(nrow(G)), function(i) {
+  mvmr_minp <- apply(pval_true[,-i], 1, min)
+  mvmr_ix <- which(mvmr_minp < 5e-8)
+
+  # For now use true G, eventual switch to estimating G
+  true_G_total <- dat$total_trait_effects
+  true_G_total[,] <- 0 # Make whole matrix 0s
+  true_G_total[1,1] <- 1
+  true_G_total[-1,-1] <- dat$total_trait_effects[-i,-i]
+  diag(true_G_total) <- 1
+
   with(dat,
-       esmr(beta_hat_Y = beta_hat[ix,i],
-            se_Y = s_estimate[ix,i],
-            beta_hat_X = beta_hat[ix,-i],
-            se_X = s_estimate[ix,-i],
+       esmr(beta_hat_Y = beta_hat[,i],
+            se_Y = s_estimate[,i],
+            beta_hat_X = beta_hat[,-i],
+            se_X = s_estimate[,-i],
+            variant_ix = mvmr_ix,
             pval_thresh = 1,
-            augment_G = TRUE,
+            G = t(true_G_total),
             beta_joint = TRUE)
   )
 })
@@ -91,8 +105,8 @@ mvmr_beta_df <- do.call(
     x <- MVMR_models[[i]]
 
     res <- x$beta[c('beta_m', 'beta_s')]
-    res$from <- rep(i, 4)
-    res$to <- setdiff(1:5, i)
+    res$to <- rep(i, 4)
+    res$from <- setdiff(1:5, i)
     res
   })
 )
@@ -118,7 +132,6 @@ if (! is_acyclic(mvmr_g)) {
   print('Removing edges: ')
   print(fas)
   discovery_G <- discovery_G - fas
-  # Missed edges
   print('New graph: ')
   print(discovery_G)
 }
@@ -139,8 +152,9 @@ discovery_adj_mat <- as.matrix(as_adjacency_matrix(discovery_G))
 
 discovery_model <- with(dat,
                         esmr(
-                          beta_hat_X = beta_hat[ix,],
-                          se_X = s_estimate[ix,],
+                          beta_hat_X = beta_hat,
+                          se_X = s_estimate,
+                          variant_ix = ix,
                           pval_thresh = 1,
                           G = diag(5), # required for network problem
                           direct_effect_template = discovery_adj_mat,
@@ -172,16 +186,16 @@ results_df <- cbind.data.frame(
   discovery_bf_adjust_log10,
   discovery_fdr_adjust_log10)
 
-adj_mat <- as.matrix(as_adjacency_matrix(
-  graph_from_edgelist(
-    as.matrix(results_df[results_df$keep_no_adjust, c('from', 'to')])
-  )
-))
+adj_mat <- matrix(0, nrow = nrow(G), ncol = ncol(G))
+adj_mat[
+  as.matrix(results_df[results_df$keep_no_adjust, c('from', 'to')])
+  ] <- 1
 
 no_adj_model <- with(dat,
                      esmr(
-                       beta_hat_X = beta_hat[ix,],
-                       se_X = s_estimate[ix,],
+                       beta_hat_X = beta_hat,
+                       se_X = s_estimate,
+                       variant_ix = ix,
                        pval_thresh = 1,
                        G = diag(5), # required for network problem
                        direct_effect_template = adj_mat,
@@ -191,16 +205,16 @@ if (all(results_df$keep_no_adjust == results_df$keep_fdr)) {
   fdr_model <- no_adj_model
 } else {
   # Create new templates for nesmr model
-  fdr_adj_mat <- as.matrix(as_adjacency_matrix(
-    graph_from_edgelist(
-      as.matrix(results_df[results_df$keep_fdr, c('from', 'to')])
-    )
-  ))
+  fdr_adj_mat <- matrix(0, nrow = nrow(G), ncol = ncol(G))
+  fdr_adj_mat[
+    as.matrix(results_df[results_df$keep_fdr, c('from', 'to')])
+  ] <- 1
 
   fdr_model <- with(dat,
                     esmr(
-                      beta_hat_X = beta_hat[ix,],
-                      se_X = s_estimate[ix,],
+                      beta_hat_X = beta_hat,
+                      se_X = s_estimate,
+                      variant_ix = ix,
                       pval_thresh = 1,
                       G = diag(5), # required for network problem
                       direct_effect_template = fdr_adj_mat,
@@ -210,16 +224,17 @@ if (all(results_df$keep_no_adjust == results_df$keep_fdr)) {
 if (all(results_df$keep_fdr == results_df$keep_bonferroni)) {
   bonferroni_model <- fdr_model
 } else {
-  bf_adj_mat <- as.matrix(as_adjacency_matrix(
-    graph_from_edgelist(
-      as.matrix(results_df[results_df$keep_bonferroni, c('from', 'to')])
-    )
-  ))
+  # Create new templates for nesmr model
+  bf_adj_mat <- matrix(0, nrow = nrow(G), ncol = ncol(G))
+  bf_adj_mat[
+    as.matrix(results_df[results_df$keep_bonferroni, c('from', 'to')])
+  ] <- 1
 
   bonferroni_model <- with(dat,
                            esmr(
-                             beta_hat_X = beta_hat[ix,],
-                             se_X = s_estimate[ix,],
+                             beta_hat_X = beta_hat,
+                             se_X = s_estimate,
+                             variant_ix = ix,
                              pval_thresh = 1,
                              G = diag(5), # required for network problem
                              direct_effect_template = bf_adj_mat,
@@ -261,14 +276,15 @@ while(min_log10_pval <= -log10(threshold) && i < n) {
   # Remove highest p-value from adj matrix
   backward_select_adj_mat[
     backward_select_edges[[i]]
-    ] <- 0
+  ] <- 0
 
   # Fit the new model
   last_backward_mod <- backward_select_models[[i]] <- with(
     dat,
     esmr(
-      beta_hat_X = beta_hat[ix,],
-      se_X = s_estimate[ix,],
+      beta_hat_X = beta_hat,
+      se_X = s_estimate,
+      variant_ix = ix,
       pval_thresh = 1,
       G = diag(5), # required for network problem
       direct_effect_template = backward_select_adj_mat,
@@ -295,16 +311,12 @@ while(min_log10_pval <= -log10(threshold) && i < n) {
     results_df, merge_backward_df,
     by = c('from', 'to'),
     all.x = TRUE
-    )
+  )
 
   i <- i + 1
 }
 
 cat('Selected', i - 1, 'edges via backward selection...\n')
-
-backward_loglik <- setNames(
-  lapply(backward_select_models, logLik.esmr),
-  paste0('backward_select_', seq_along(backward_select_models)))
 
 # Log Likelihoods
 loglik_results <- lapply(
@@ -313,5 +325,11 @@ loglik_results <- lapply(
 names(loglik_results) <- c(
   "true", "discovery", "no_adj", "fdr", "bonferroni")
 
-loglik_results <- c(loglik_results, backward_loglik)
-print(loglik_results)
+if (length(backward_select_models) > 0) {
+  backward_loglik <- setNames(
+    lapply(backward_select_models, logLik.esmr),
+    paste0('backward_select_', seq_along(backward_select_models)))
+
+  loglik_results <- c(loglik_results, backward_loglik)
+  print(loglik_results)
+}
