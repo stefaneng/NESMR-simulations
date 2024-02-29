@@ -1,5 +1,5 @@
-renv::load('/nfs/turbo/sph-jvmorr/NESMR/simulations')
-devtools::load_all('/nfs/turbo/sph-jvmorr/NESMR/esmr')
+#renv::load('/nfs/turbo/sph-jvmorr/NESMR/simulations')
+# devtools::load_all('/nfs/turbo/sph-jvmorr/NESMR/esmr')
 
 library(ggplot2)
 library(dscrutils)
@@ -7,10 +7,10 @@ library(tidyr)
 library(plyr)
 library(dplyr)
 
-reticulate::use_condaenv('dsc')
+# reticulate::use_condaenv('dsc')
 
-sim_path <- '/nfs/turbo/sph-jvmorr/NESMR/simulations/five_node_one_edge_complete'
-output_dir <- file.path(sim_path, 'results')
+#sim_path <- '/nfs/turbo/sph-jvmorr/NESMR/simulations/five_node_one_edge_complete'
+output_dir <- file.path('results')
 
 threshold <- 0.05
 
@@ -43,9 +43,10 @@ G_edges_df <- cbind(
 edge_order <- G_edges_df$edge
 
 # Load data from dsc
-dscout <- dscquery(
-    dsc.outdir = sim_path,
-    targets    = c("simulate.results_df", "simulate.model_ll"))
+# dscout <- dscquery(
+#     dsc.outdir = sim_path,
+#     targets    = c("simulate.results_df", "simulate.model_ll"))
+dscout <- readRDS('analysis/five_node_complete_sim_v2.rds')
 
 sim_results_df <- bind_rows(dscout$simulate.results_df, .id = "sim_idx")
 long_sim_results_df <- sim_results_df %>%
@@ -70,7 +71,10 @@ long_sim_results_df <- sim_results_df %>%
             levels = edge_order)
       )
 
-write.csv(long_sim_results_df, file.path(output_dir, 'long_sim_results_df.csv'), row.names = FALSE)
+long_sim_results_df %>%
+  filter(model == "5-1" & edge == "5->1")
+
+# write.csv(long_sim_results_df, file.path(output_dir, 'long_sim_results_df.csv'), row.names = FALSE)
 
 bias_boxplot <- ggplot(long_sim_results_df) +
   geom_boxplot(aes(x = edge, y = bias)) +
@@ -100,6 +104,11 @@ ggsave(
   width = 12, height = 14
 )
 
+five_one_log10_pvals <- long_sim_results_df %>%
+  filter(model == "5-1" & edge == "5->1") %>%
+  pull(log10_pvals)
+
+# hist(10^five_one_log10_pvals)
 
 ## P-value histogram plot
 pvalue_results <- long_sim_results_df %>%
@@ -184,3 +193,20 @@ ggsave(
   units = "in",
   width = 14, height = 10
 )
+
+
+library(kableExtra)
+pvalue_results %>%
+  group_by(model, edge) %>%
+  summarize(
+    mean_bias = format(mean(bias), digits = 2, scientific = TRUE)
+  ) %>%
+  pivot_wider(
+    names_from = "model",
+    values_from = "mean_bias"
+  ) %>%
+  # Format the digits as scientific notation
+  kable() %>%
+  kable_styling()
+
+
