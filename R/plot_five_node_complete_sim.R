@@ -47,6 +47,9 @@ dscout <- dscquery(
     dsc.outdir = sim_path,
     targets    = c("simulate.results_df", "simulate.model_ll"))
 
+
+saveRDS(dscout, print(file.path(output_dir, 'five_node_complete_sim_v2.rds')))
+
 sim_results_df <- bind_rows(dscout$simulate.results_df, .id = "sim_idx")
 long_sim_results_df <- sim_results_df %>%
     pivot_longer(
@@ -140,6 +143,39 @@ ggsave(
   width = 14, height = 10
 )
 
+bias_hist <- ggplot(pvalue_results) +
+    geom_histogram(
+      aes(x = bias, after_stat(density))) +
+    geom_vline(aes(xintercept = 0), color = "red", alpha = 0.5, lty = 2) +
+  facet_grid(
+    rows = vars(model),
+    cols = vars(edge)
+  ) +
+  theme_minimal() +
+  theme(text = element_text(size = 24), plot.title = element_text(size = 24), axis.text.x = element_text(angle = 90)) +
+  xlab("Bias") +
+  labs(
+    title = "Five node simulation complete DAG and one edge bias distribution",
+    caption =
+      bquote(
+        atop(
+            "Sim parameters:" ~ h^2 ~ "=" ~ .(paste0(h2, collapse = ',')) ~ ", N = " ~ .(N) ~ ", J = " ~ .(J) ~ "," ~ pi ~ " = " ~ .(pi),
+            "No LD or pleiotropy"
+        )
+      )
+  )
+
+ggsave(
+  filename = print(file.path(
+    output_dir,
+    sprintf("%s_bias_hist.jpg", Sys.Date()
+    ))
+  ),
+  plot = bias_hist,
+  units = "in",
+  width = 14, height = 10
+)
+
 ## QQ plot
 qqplot_log10 <- pvalue_results %>%
   group_by(model, edge) %>%
@@ -184,3 +220,16 @@ ggsave(
   units = "in",
   width = 14, height = 10
 )
+
+pvalue_results %>%
+  group_by(model, edge) %>%
+  summarize(
+    mean_bias = format(mean(bias), digits = 2, scientific = TRUE)
+  ) %>%
+  pivot_wider(
+    names_from = "model",
+    values_from = "mean_bias"
+  ) %>%
+  # Format the digits as scientific notation
+  kable() %>%
+  kable_styling()
