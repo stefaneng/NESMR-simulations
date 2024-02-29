@@ -1,8 +1,8 @@
 renv::load('/nfs/turbo/sph-jvmorr/NESMR/simulations')
 devtools::load_all('/nfs/turbo/sph-jvmorr/NESMR/esmr')
 library(GWASBrewer)
-library(igraph)
 library(dplyr)
+library(igraph)
 
 threshold <- 0.05
 
@@ -62,29 +62,24 @@ B_true[!B_true == 0] <- 1
 
 five_node_g <- graph_from_adjacency_matrix(B_true)
 
-# which_beta gives the indices of the F matrix that should be estimated
 true_model <- with(dat,
                    esmr(
                      beta_hat_X = beta_hat,
                      se_X = s_estimate,
                      variant_ix = ix,
-                     pval_thresh = 1,
                      G = diag(5), # required for network problem
                      direct_effect_template = B_true))
 
 ## 1. esmr to generate super graph
-
-
-
 MVMR_models <- lapply(seq_len(nrow(G)), function(i) {
   mvmr_minp <- apply(pval_true[,-i], 1, min)
   mvmr_ix <- which(mvmr_minp < 5e-8)
 
   # For now use true G, eventual switch to estimating G
-  true_G_total <- dat$total_trait_effects
-  true_G_total[,] <- 0 # Make whole matrix 0s
-  true_G_total[1,1] <- 1
-  true_G_total[-1,-1] <- dat$total_trait_effects[-i,-i]
+
+  trait_order <- c(i, (1:5)[-i])
+  true_G_total <- dat$total_trait_effects[trait_order,trait_order]
+  true_G_total[1, ] <- true_G_total[, 1] <- 0
   diag(true_G_total) <- 1
 
   with(dat,
@@ -93,7 +88,6 @@ MVMR_models <- lapply(seq_len(nrow(G)), function(i) {
             beta_hat_X = beta_hat[,-i],
             se_X = s_estimate[,-i],
             variant_ix = mvmr_ix,
-            pval_thresh = 1,
             G = t(true_G_total),
             beta_joint = TRUE)
   )
