@@ -1,0 +1,75 @@
+---
+title: "Five Node MVMR Sim"
+author: "Stefan Eng"
+format: html
+editor: visual
+---
+
+## Five Node Discovery Graph Sim
+
+![MVMR graph](true_five_node_graph.png)
+
+```{r}
+#| echo: false
+library(kableExtra)
+library(dplyr)
+res <- readRDS(file = '../five_node_discovery_test.rds')
+```
+
+## Results
+
+We simulated 1000 simulations of the first steps of the discovery graph, namely the $k$ MVMR steps and the $k$ FAS steps.
+We then compared the graphs to the true graph and counted the number of edges that were missing or extra in the MVMR and FAS graphs.
+
+```{r}
+#| echo: false
+table(unlist(lapply(res, function(x) {
+  #   print(x$missed_edges)
+  nrow(x$extra_edges_mvmr)
+}))) %>%
+  kable(col.names = c('Number of Extra Edges', 'Count'), caption = 'Extra Edges in maximal MVMR') %>%
+  kable_styling()
+```
+
+```{r}
+#| echo: false
+table(unlist(lapply(res, function(x) {
+#   print(x$missed_edges)
+  if (nrow(x$extra_edges_mvmr) > 0) {
+    paste0(x$extra_edges_mvmr$from, '-', x$extra_edges_mvmr$to)
+  }
+}))) %>%
+  as.data.frame() %>%
+  mutate(
+    prop = Freq / 1000
+  ) %>%
+  kable(col.names = c('Edges', 'Count', 'Prop'), caption = 'Extra Edges in maximal acyclic graph step') %>%
+  kable_styling()
+```
+
+```{r}
+#| echo: false
+table(unlist(lapply(res, function(x) {
+  #   print(x$missed_edges)
+  if (nrow(x$extra_edges_fas) > 0) {
+    paste0(x$extra_edges_fas$from, '-', x$extra_edges_fas$to)
+  }
+}))) %>%
+  as.data.frame() %>%
+  mutate(
+    prop = Freq / 1000
+  ) %>%
+  kable(col.names = c('Edges', 'Count', 'Prop'), caption = 'Extra Edges in maximal acyclic graph step') %>%
+  kable_styling()
+```
+
+```{r}
+#| echo: false
+table(unlist(lapply(res, function(x) {
+  #   print(x$missed_edges)
+  nrow(x$extra_edges_fas)
+}))) %>%
+  kable(col.names = c('Number of Extra Edges', 'Count'), caption = 'Extra Edges in maximal acyclic graph step') %>%
+  kable_styling()
+```
+
