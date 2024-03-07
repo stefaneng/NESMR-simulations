@@ -149,7 +149,6 @@ discovery_model <- with(dat,
                           beta_hat_X = beta_hat,
                           se_X = s_estimate,
                           variant_ix = ix,
-                          pval_thresh = 1,
                           G = diag(5), # required for network problem
                           direct_effect_template = discovery_adj_mat,
                           max_iter = 300))
@@ -190,7 +189,6 @@ no_adj_model <- with(dat,
                        beta_hat_X = beta_hat,
                        se_X = s_estimate,
                        variant_ix = ix,
-                       pval_thresh = 1,
                        G = diag(5), # required for network problem
                        direct_effect_template = adj_mat,
                        max_iter = 300))
@@ -209,7 +207,6 @@ if (all(results_df$keep_no_adjust == results_df$keep_fdr)) {
                       beta_hat_X = beta_hat,
                       se_X = s_estimate,
                       variant_ix = ix,
-                      pval_thresh = 1,
                       G = diag(5), # required for network problem
                       direct_effect_template = fdr_adj_mat,
                       max_iter = 300))
@@ -229,7 +226,6 @@ if (all(results_df$keep_fdr == results_df$keep_bonferroni)) {
                              beta_hat_X = beta_hat,
                              se_X = s_estimate,
                              variant_ix = ix,
-                             pval_thresh = 1,
                              G = diag(5), # required for network problem
                              direct_effect_template = bf_adj_mat,
                              max_iter = 300))
@@ -256,30 +252,30 @@ backward_select_models <- list()
 backward_mod_results <- list()
 backward_select_pvals <- list()
 backward_results <- list()
-i <- 1
+last_backward_mod <- NULL
+iter <- 1
 cat('Starting backward selection...\n')
 # While we still have large p-values...
-while(min_log10_pval <= -log10(threshold) && i < n) {
-  cat('Backward select: ', i, '\n')
-  backward_select_edges[[i]] <- as.matrix(backward_df[idx_log10_pval, 1:2])
+while(min_log10_pval <= -log10(threshold) && iter < n) {
+  cat('Backward select: ', iter, '\n')
+  backward_select_edges[[iter]] <- as.matrix(backward_df[idx_log10_pval, 1:2])
 
-  backward_results[[i]] <- cbind.data.frame(
-    backward_select_edges[[i]], min_log10_pval
+  backward_results[[iter]] <- cbind.data.frame(
+    backward_select_edges[[iter]], min_log10_pval
   )
 
   # Remove highest p-value from adj matrix
   backward_select_adj_mat[
-    backward_select_edges[[i]]
+    backward_select_edges[[iter]]
   ] <- 0
 
   # Fit the new model
-  last_backward_mod <- backward_select_models[[i]] <- with(
+  last_backward_mod <- backward_select_models[[iter]] <- with(
     dat,
     esmr(
       beta_hat_X = beta_hat,
       se_X = s_estimate,
       variant_ix = ix,
-      pval_thresh = 1,
       G = diag(5), # required for network problem
       direct_effect_template = backward_select_adj_mat,
       max_iter = 300))
@@ -287,9 +283,9 @@ while(min_log10_pval <= -log10(threshold) && i < n) {
 
   # TODO Keep track of discovery_bf_adjust_log10?
   backward_idx <- which(backward_select_adj_mat != 0, arr.ind = TRUE)
-  backward_log_pvals <- backward_select_models[[i]]$pvals_dm[backward_idx]
-  backward_log10 <- backward_select_pvals[[i]] <- pmin(- backward_log_pvals / log(10), 20)
-  backward_df <- backward_mod_results[[i]] <- data.frame(
+  backward_log_pvals <- backward_select_models[[iter]]$pvals_dm[backward_idx]
+  backward_log10 <- backward_select_pvals[[iter]] <- pmin(- backward_log_pvals / log(10), 20)
+  backward_df <- backward_mod_results[[iter]] <- data.frame(
     setNames(data.frame(backward_idx), c('from', 'to')),
     backward_log10
   )
@@ -300,17 +296,17 @@ while(min_log10_pval <= -log10(threshold) && i < n) {
   min_log10_pval <- backward_log10[idx_log10_pval]
 
   merge_backward_df <- backward_df
-  names(merge_backward_df) <- c('from', 'to', paste0('backward_log10_', i))
+  names(merge_backward_df) <- c('from', 'to', paste0('backward_log10_', iter))
   results_df <- merge(
     results_df, merge_backward_df,
     by = c('from', 'to'),
     all.x = TRUE
   )
 
-  i <- i + 1
+  iter <- iter + 1
 }
 
-cat('Selected', i - 1, 'edges via backward selection...\n')
+cat('Selected', iter - 1, 'edges via backward selection...\n')
 
 # Log Likelihoods
 loglik_results <- lapply(
