@@ -39,34 +39,15 @@ correct_edges <- cbind(
 
 pval_adj_methods <- c('keep_no_adjust', 'keep_bonferroni', 'keep_fdr', 'keep_backward')
 
-head(dscout$discovery_algo.results_df)
-
-bse <- lapply(
-    seq_along(dscout$discovery_algo.backward_select_edges),
-    function(i) {
-        x <- dscout$discovery_algo.backward_select_edges[[i]]
-        tryCatch({
-            removed_edges <- cbind(
-                do.call('rbind.data.frame', lapply(x, `colnames<-`, c('from', 'to'))),
-                removed_backward = TRUE,
-                i = i)
-                left_join(dscout$discovery_algo.results_df[[i]], removed_edges, by = c('from', 'to'))
-        },
-        error = function(e) NULL
-        )
-    })
-
-# TODO: Check why 60 is NA?
-bse <- bse[sapply(bse, Negate(is.null))]
-
-# TODO: Need to add the removed edges from backward select here too
 edge_results <- do.call('rbind.data.frame',
-    lapply(seq_along(bse), function(i) {
-        x <- bse[[i]]
+    lapply(seq_along(dscout$discovery_algo.results_df), function(i) {
+        x <- dscout$discovery_algo.results_df[[i]]
         x <- merge(x, correct_edges, by = c("from", "to"), all = TRUE)
-        x$correct_edge[is.na(x$correct_edge)] <- FALSE
-        x$removed_backward[is.na(x$removed_backward)] <- FALSE
-        x$keep_backward <- ! x$removed_backward
+        x <- replace_na(x, list(correct_edge = FALSE))
+        x$keep_backward <- x %>%
+            select(starts_with('backward_log10')) %>%
+            is.na() %>%
+            rowSums() == 0
 
         fct_edges <- lapply(
             x[, c(pval_adj_methods, 'correct_edge')], factor, levels = c('TRUE', 'FALSE'))
@@ -82,7 +63,7 @@ edge_results <- do.call('rbind.data.frame',
     })
 )
 
-edge_results %>%
+correct_edges_no_LD <- edge_results %>%
     group_by(Var1, method) %>%
     rename(KeepEdge.Actual = Var1) %>%
     mutate(method = gsub('keep_', '', method)) %>%
@@ -91,5 +72,10 @@ edge_results %>%
         min = min(Freq),
         max = max(Freq),
         mean = mean(Freq)
-    ) %>%
-    write.csv(file = print(file.path(sim_path, 'results', "correct_edges_no_LD.csv")), row.names = FALSE)
+    )
+
+write.csv(correct_edges_no_LD, file = print(file.path(sim_path, 'results', "correct_edges_no_LD.csv")), row.names = FALSE)
+
+#correct_edges_no_LD <- edge_results
+
+# correct_edges_no_LD$Result <- factor(correct_edges_no_LD$KeepEdge.Actual, levels = c('TRUE.TRUE', 'TRUE.FALSE', 'FALSE.TRUE', 'FALSE.FALSE'))
