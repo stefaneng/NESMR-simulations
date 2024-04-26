@@ -29,11 +29,17 @@ nesmr: five_node_GSEM_compare/nesmr.R
   $nesmr_model: nesmr_model
   $seed: DSC_SEED
 
+nesmr_winners_curse: five_node_GSEM_compare/nesmr_winners_curse.R
+  dat: $GWAS_dat
+  G: $G
+  $nesmr_model_wc: nesmr_model
+  $seed: DSC_SEED
+
 DSC:
   define:
     simulate: GWAS_sim_five_node
     ldsc: compute_ldsc
-    analyze: nesmr, genomic_sem
+    analyze: nesmr, genomic_sem, nesmr_winners_curse
   run: simulate * ldsc * analyze
   exec_path: R
   output: five_node_GSEM_eval

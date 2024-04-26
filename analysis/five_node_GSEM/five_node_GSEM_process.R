@@ -9,6 +9,10 @@ dscout <- dscquery(dsc.outdir = "/nfs/turbo/sph-jvmorr/NESMR/simulations/five_no
                     "genomic_sem.genomic_sem_fit"),
                    ignore.missing.files = TRUE)
 
+dscout_wc <- dscquery(dsc.outdir = "/nfs/turbo/sph-jvmorr/NESMR/simulations/five_node_GSEM_eval",
+                   targets    = c("nesmr_winners_curse.nesmr_model_wc"),
+                   ignore.missing.files = TRUE)
+
 dsc_n <- dscquery(dsc.outdir = "/nfs/turbo/sph-jvmorr/NESMR/simulations/five_node_GSEM_eval",
                    targets    = c("simulate.n"),
                    ignore.missing.files = TRUE)
@@ -29,6 +33,8 @@ G <- matrix(
   nrow = 5,
   byrow = 5
 )
+
+true_edges
 
 extract_lower_triangular <- function(mat) {
     if (is.null(colnames(mat))) {
@@ -59,6 +65,24 @@ nesmr_results <- lapply(seq_along(dscout$nesmr.nesmr_model), function(i) {
     )
 })
 
+# TODO: CHeck this... have not run yet
+nesmr_wc_results <- lapply(seq_along(dscout_wc$nesmr_winners_curse.nesmr_model_wc), function(i) {
+    x <- dscout_wc$nesmr_winners_curse.nesmr_model_wc[[i]]
+    if (typeof(x) != 'list') return(NULL)
+    de <- extract_lower_triangular(x$direct_effects)
+
+    # Convert log_e to log10 p-values
+    pvals_log10 <- extract_lower_triangular(x$pvals_dm) / log(10)
+
+    data.frame(
+        model = 'NESMR_WC',
+        beta = de,
+        pvals_log10 = pvals_log10,
+        edge = names(de),
+        n = dsc_n$simulate.n[i]
+    )
+})
+
 genomic_sem_results <- lapply(seq_along(dscout$genomic_sem.genomic_sem_fit), function(i) {
     x <- dscout$genomic_sem.genomic_sem_fit[[i]]
     if (typeof(x) != 'list') return(NULL)
@@ -79,13 +103,18 @@ true_edges <- data.frame(
 )
 true_edges$edge <- rownames(true_edges)
 
-merged_results <- bind_rows(nesmr_results, genomic_sem_results, .id = 'id') %>%
+merged_results <- bind_rows(
+    nesmr_results,
+    nesmr_wc_results,
+    genomic_sem_results,
+    .id = 'id') %>%
     `rownames<-`(NULL) %>%
     left_join(
         true_edges,
         by = 'edge'
     ) %>%
-    replace_na(list(true_beta = 0))
+    replace_na(list(true_beta = 0)) %>%
+    separate(edge, c('from', 'to'), sep = '->')
 
 # Write merged_results to file with todays date
-write.csv(merged_results, file = "simulations/five_node_GSEM_eval/nesmr_vs_genomic_sem_results.csv", row.names = FALSE)
+write.csv(merged_results, file = "simulations/five_node_GSEM_eval/nesmr_vs_genomic_sem_results_2.csv", row.names = FALSE)
