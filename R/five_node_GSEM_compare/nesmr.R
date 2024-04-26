@@ -2,18 +2,6 @@ library(GWASBrewer)
 devtools::load_all('/nfs/turbo/sph-jvmorr/NESMR/esmr')
 B_lower <- lower.tri(G) + 0
 
-# Select on true variants
-Ztrue <- with(dat, beta_marg/se_beta_hat)
-pval_true <- 2*pnorm(-abs(Ztrue))
-minp <- apply(pval_true, 1, min)
-
-# ld pruning
-dat$ld_list_minp <- GWASBrewer::sim_ld_prune(dat, R_LD = GWASBrewer::ld_mat_list, pvalue = minp)
-
-ix <- dat$ld_list_minp
-minp <- apply(pval_true[ix, ], 1, min)
-ix1 <- ix[which(minp < 5e-8)]
-
 # Error in inverting total to direct
 nesmr_model <- with(
   dat,

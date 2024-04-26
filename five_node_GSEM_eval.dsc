@@ -10,7 +10,7 @@ GWAS_sim_five_node: five_node_GSEM_compare/five_node_simulate_LD.R
   $GWAS_dat: dat
   $seed: DSC_SEED
 
-comptute_ldsc: ldsc.R + five_node_GSEM_compare/compute_ldsc.R
+compute_ldsc: ldsc.R + five_node_GSEM_compare/compute_ldsc.R
   dat: $GWAS_dat
   N: $N
   $ldsc_res: ldsc_res
@@ -32,7 +32,7 @@ nesmr: five_node_GSEM_compare/nesmr.R
 DSC:
   define:
     simulate: GWAS_sim_five_node
-    ldsc: comptute_ldsc
+    ldsc: compute_ldsc
     analyze: nesmr, genomic_sem
   run: simulate * ldsc * analyze
   exec_path: R
