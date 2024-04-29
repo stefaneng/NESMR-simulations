@@ -3,6 +3,7 @@ devtools::load_all('/nfs/turbo/sph-jvmorr/NESMR/esmr')
 
 library(igraph)
 
+# Note: This has in-selection bias
 minp <- apply(dat$pval, 1, min)
 ix <- dat$ld_list_minp
 minp <- apply(dat$pval[ix,], 1, min)

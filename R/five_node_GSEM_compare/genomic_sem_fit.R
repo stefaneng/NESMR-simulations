@@ -1,13 +1,14 @@
 library(lavaan)
 library(GenomicSEM)
 
-trait_names <- paste0('V', 1:ncol(G))
-sem_model <- '
+# TODO: Generalize this
+trait_names <- paste0("V", 1:5)
+sem_model <- "
     V1 ~ V2 + V3 + V4 + V5
     V2 ~ V3 + V4 + V5
     V3 ~ V4 + V5
     V4 ~ V5
-  '
+  "
 
 sem_mod_ML <- sem(
   model = sem_model,
@@ -30,5 +31,6 @@ sem_mod_DWLS <- sem(
 )
 
 genomic_sem_fit <- usermodel(
-  covstruc = ldsc_res
+  covstruc = ldsc_res,
+  model = sem_model
 )
