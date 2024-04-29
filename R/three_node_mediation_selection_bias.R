@@ -5,6 +5,8 @@ library(forcats)
 library(reshape2)
 library(parallel)
 
+devtools::load_all('../esmr/')
+
 # Note: This was not run on cluster but on local machine
 #  This illustrates that we have winner's curse
 
@@ -84,6 +86,8 @@ res <- parallel::mclapply(1:100, function(x) {
 
 res_merged <- melt(res)
 
+# saveRDS(res_merged, 'results/three_node_mediation/three_node_mediation_selection_bias.rds')
+
 true_beta <- data.frame(
   beta = c('beta_1', 'beta_2', 'beta_3'),
   true_value = c(sqrt(0.4), sqrt(0.2), 0)
@@ -130,7 +134,11 @@ alpha <- 0.05
 pval_data <- res_merged %>%
   filter(L2 %in% c('lrt_pvalue', 'dm_pvalue')) %>%
   mutate(observed = -log10(value)) %>%
-  arrange(L2, desc(observed))
+  arrange(L2, desc(observed)) %>%
+  rename(
+    'p_value_method' = L2,
+    'iteration' = L1
+  )
 
 expected <- -log10(ppoints(nrow(pval_data) / 2))
 lower_bound <- qbeta(alpha / 2, seq_along(expected), rev(seq_along(expected)))
@@ -142,8 +150,10 @@ pval_data$expected <- rep(expected, 2)
 pval_data$lower_bound_log <- rep(lower_bound_log, 2)
 pval_data$upper_bound_log <- rep(upper_bound_log, 2)
 
+# saveRDS(pval_data, 'results/three_node_mediation/three_node_mediation_qqplot.rds')
+
 pval_qq_plot <- ggplot(pval_data, aes(x = expected, y = observed)) +
-  geom_point(aes(group = L2, color = L2)) +
+  geom_point(aes(group = p_value_method, color = p_value_method)) +
   geom_ribbon(aes(ymin = lower_bound_log, ymax = upper_bound_log), alpha = 0.2) +
   geom_abline(slope = 1, intercept = 0, color = "red") +
   xlab(expression(atop("Expected", paste("(", -log[10], " p-value)")))) +
