@@ -67,6 +67,19 @@ uvmr_rand_wc_sim <- function(
 
   B_lower <- lower.tri(G) + 0
 
+  # Select on true values
+  Z_true <- with(dat, beta_marg / se_beta_hat)
+  true_ix_X <- which(abs(Z_true[, 2]) > lambda)
+
+  no_wc_esmr_X <- try(with(dat, esmr::esmr(
+    beta_hat_X = beta_hat,
+    se_X = s_estimate,
+    variant_ix = true_ix_X,
+    G = diag(2),
+    direct_effect_template = B_lower,
+    max_iter = 300)
+  ), silent = TRUE)
+
   # Winner's cursed estimates
   # TODO: is this actually an issue in how we select the variants?
   # In the UVMR case we only case about G -> X but not G -> Y
@@ -244,6 +257,7 @@ uvmr_rand_wc_sim <- function(
   ## Return results
   res <- lapply(
     list(
+      no_wc_esmr_X = no_wc_esmr_X,
       cursed_esmr_X = cursed_esmr_X,
       cursed_esmr_XY = cursed_esmr_XY,
       ini_reduced_N_esmr = ini_reduced_N_esmr,

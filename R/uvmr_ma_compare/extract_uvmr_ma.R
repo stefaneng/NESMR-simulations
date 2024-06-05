@@ -3,19 +3,7 @@ library(dplyr)
 library(tidyr)
 reticulate::use_condaenv('dsc')
 
-extract_lower_triangular <- function(mat, prefix = "") {
-    if (is.null(colnames(mat))) {
-        col_names <- paste0("V", seq_len(ncol(mat)))
-    } else {
-        col_names <- colnames(mat)
-    }
-
-    low_tri_idx <- which(lower.tri(mat), arr.ind = TRUE)
-    low_tri_arrow <- paste0(prefix, col_names[low_tri_idx[, 1]], '_', col_names[low_tri_idx[, 2]])
-    setNames(mat[lower.tri(mat)], low_tri_arrow)
-}
-
-dir <- "/nfs/turbo/sph-jvmorr/NESMR/simulations/2024-06-04_uvmr_ma_compare"
+dir <- "/nfs/turbo/sph-jvmorr/NESMR/simulations/2024-06-05_uvmr_ma"
 dscout1 <- dscquery(dsc.outdir = dir,
                    targets    = c(
                     "simulate.res"
@@ -23,7 +11,20 @@ dscout1 <- dscquery(dsc.outdir = dir,
                     return.type = "list",
                    ignore.missing.files = TRUE)
 
+dscout_rest <- dscquery(dsc.outdir = dir,
+                   targets    = c(
+                    "simulate.n",
+                    "simulate.J",
+                    "simulate.pi_J",
+                    "simulate.h2",
+                    "simulate.true_beta"
+                    ),
+                   ignore.missing.files = TRUE)
+
+
 all_res <- do.call('rbind.data.frame', lapply(dscout1$simulate.res, as.data.frame))
+
+all_res <- cbind(dscout_rest, all_res)
 
 today <- format(Sys.Date(), "%Y-%m-%d")
 saveRDS(all_res, file = print(file.path(dir, paste0(today, "_uvmr_ma_compare.rds"))))
