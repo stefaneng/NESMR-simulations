@@ -1,0 +1,112 @@
+---
+title: "UVMR Simulation Results"
+author: "Stefan Eng"
+format: html
+echo: false
+warning: false
+---
+
+## Simulation outline
+
+The goal of the simulation is to compare the performance of the univariable (n)esmr with the RB estimator to remove winner's curse.
+We simulate data under a variety of scenarios and compare the estimated effect sizes to the true effect sizes.
+
+### Simulation parameters
+Simulate UVMR setup with $X \to Y$ with true effect $\beta = 0.1$
+
+  - No sporadic pleiotropy
+  - No LD
+  - Heritability 0.5
+  - Sample sizes 10000, 20000, 40000
+  - 300 replicates
+  
+### Models
+
+No Adjustment Models
+
+  - *esmr* with true variants: `beta_marg / se_beta_hat > lambda`
+  - *esmr* with winner's curse variants: `beta_hat / s_estimate > lambda`
+  - *IVW* with winner's curse variants
+
+Initial naive estimator: $\hat{\gamma}_j - \text{SE}(\hat{\gamma}_j) Z_j / \eta^2$
+
+  - *esmr* using initial naive estimator
+  - *ivw* using initial naive estimator
+  - *esmr* winners curse esmr with sample size reduced by factor of 2
+  - *ivw* winners curse esmr with sample size reduced by factor of 2
+
+Rao-Blackwell estimator
+
+  - esmr/IVW/RIVW Rao-Blackwell estimator 
+  - Resampled by factor of mean of $\text{SE}(\hat{\gamma}_{RB,j}) / \text{SE}(\hat{\gamma}_{j})$
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+all_res <- readRDS('../../data/2024-06-05_uvmr_ma_compare.rds')
+
+plot_data <- all_res %>%
+  select(-simulate.true_beta) %>%
+  select(DSC, starts_with('simulate') | ends_with('beta') | contains('beta_ivw')) %>%
+  pivot_longer(
+    cols = contains('beta'),
+    names_to = c('model', 'ivw'),
+    names_pattern = "(.*)[.]beta_?(ivw)?",
+    names_transform = list(ivw = ~ .x == "ivw"),
+    values_to = 'beta'
+  ) %>%
+  rename_with(~ gsub('simulate.', '', .x)) %>%
+  mutate(
+    N = as.factor(n)
+  ) %>%
+  filter(h2 > 0.3)
+
+group_means <- plot_data %>%
+  group_by(model, N, h2) %>%
+  summarise(
+    mean_beta = mean(beta, na.rm = TRUE),
+    sd_beta = sd(beta, na.rm = TRUE)
+  )
+
+order_by_h2 <- group_means %>%
+  filter(h2 == 0.5 & N == 20000) %>%
+  mutate(
+    bias = mean_beta - 0.1
+  ) %>%
+  arrange(
+    abs(bias)
+  ) %>%
+  pull(model)
+
+plot_data$model <- factor(plot_data$model, levels = order_by_h2)
+group_means$model <- factor(group_means$model, levels = order_by_h2)
+```
+
+
+
+## Results
+
+- Plots are sorted by lowest bias for h2 0.5 and N=20,000 case
+
+```{r}
+#| fig-height: 12
+ggplot(plot_data) +
+  facet_grid(
+    rows = vars(model),
+    #cols = vars(h2),
+    scales = 'free') +
+  geom_density(aes(x = beta, fill = N), alpha = 0.5) +
+  geom_vline(data = group_means, xintercept = 0.1, linetype = 'dotted', lty = 1.5) +
+  geom_vline(data = group_means, aes(xintercept = mean_beta, color = N)) +
+  theme_minimal() +
+  theme(legend.position = 'bottom',
+        strip.text.y.right = element_text(angle = 0)) +
+  labs(
+    x = 'Beta',
+    y = 'Density'
+  )
+```
