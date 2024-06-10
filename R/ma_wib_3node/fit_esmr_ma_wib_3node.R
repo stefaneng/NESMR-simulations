@@ -4,7 +4,8 @@ library(dplyr)
 extract_edge_info <- function(model, sim_beta) {
   model_name <- as.character(as.list(match.call()[-1])$model)
   if (inherits(model, "try-error")) {
-    print(model)
+    write("Cannot extract edge info from model", stderr())
+    write(model, stderr())
     return(NULL)
   }
   beta <- extract_lower_triangular(model$direct_effects)
@@ -95,10 +96,14 @@ ma_model <- try(with(ma_adj_dat, esmr::esmr(
   max_iter = 300)
 ), silent = TRUE)
 
+cursed_mod_results <- extract_edge_info(cursed_model, true_beta)
+true_mod_results <- extract_edge_info(true_model, true_beta)
+ma_mod_results <- extract_edge_info(ma_model, true_beta)
+
 sim_results <- bind_rows(
-  extract_edge_info(cursed_model, true_beta),
-  extract_edge_info(true_model, true_beta),
-  extract_edge_info(ma_model, true_beta)
+  cursed_mod_results,
+  true_mod_results,
+  ma_mod_results
 )
 
 n_variants <- lapply(

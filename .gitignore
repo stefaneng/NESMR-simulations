@@ -10,3 +10,5 @@
 *.mpk
 *.html
 .Rproj.user
+simulation_results/
+log/

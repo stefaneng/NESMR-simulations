@@ -6,7 +6,7 @@ library(here)
 
 reticulate::use_condaenv('dsc')
 
-dir <- here("2024-06-07_ma_wib_3node")
+dir <- here("simulations/simulation_results/2024-06-10_ma_wib_3node")
 dsc_params <- dscquery(dsc.outdir = dir,
                     targets    = c(
                       "simulate.N",
@@ -24,12 +24,14 @@ dsc_params$i <- as.character(seq_len(nrow(dsc_params)))
 sim_results <- dscquery(dsc.outdir = dir,
                    targets    = c(
                      "fit_esmr.sim_results",
-                     "fit_esmr.n_variants"
+                     "fit_esmr.n_variants",
+                     "fit_esmr.cursed_mod_results",
+                     "fit_esmr.true_mod_results",
+                     "fit_esmr.ma_mod_results"
                    ),
                    return.type = "list",
                    ignore.missing.files = TRUE)
 
-# Merge sim results and dsc params
 all_results <- bind_rows(sim_results$fit_esmr.sim_results, .id = "i") %>%
   left_join(dsc_params, by = "i") %>%
   select(-i)
