@@ -1,8 +1,13 @@
 library(esmr)
 library(dplyr)
 
-extract_edge_info <- function(model, sim_beta) {
-  model_name <- as.character(as.list(match.call()[-1])$model)
+extract_edge_info <- function(model, sim_beta, name = NULL) {
+  if (is.null(name)) {
+    model_name <- as.character(as.list(match.call()[-1])$model)
+  } else {
+    model_name <- name
+  }
+
   if (inherits(model, "try-error")) {
     write("Cannot extract edge info from model", stderr())
     write(model, stderr())
@@ -58,47 +63,59 @@ true_model <- try(with(dat, esmr::esmr(
 ), silent = TRUE)
 
 ## Ma adjustment
-noise_N <- Reduce('*', dim(dat$beta_hat[, -1, drop = FALSE]))
-W <- rnorm(noise_N, 0, sd = eta)
-snp_select <- abs(Z_cursed[, -1, drop = FALSE] + W)
+ma_models <- lapply(eta, function(.eta) {
+  noise_N <- Reduce('*', dim(dat$beta_hat[, -1, drop = FALSE]))
+  W <- rnorm(noise_N, 0, sd = .eta)
+  snp_select <- abs(Z_cursed[, -1, drop = FALSE] + W)
 
-rand_ix <- which(snp_select > lambda, arr.ind = TRUE)
+  rand_ix <- which(snp_select > lambda, arr.ind = TRUE)
 
-# Add one for the first column
-rand_ix[, 2] <- rand_ix[, 2] + 1
+  # Add one for the first column
+  rand_ix[, 2] <- rand_ix[, 2] + 1
 
-# Create a new data object with the same structure as dat
+  # Create a new data object with the same structure as dat
 
-ma_adj_dat <- list()
-ma_adj_dat$beta_hat <- dat$beta_hat
-ma_adj_dat$s_estimate <- dat$s_estimate
+  ma_adj_dat <- list()
+  ma_adj_dat$beta_hat <- dat$beta_hat
+  ma_adj_dat$s_estimate <- dat$s_estimate
 
-# Only adjust the significant SNP values
-unbias_SNPs <- esmr::snp_beta_rb(
-  beta = dat$beta_hat[rand_ix],
-  se_beta = dat$s_estimate[rand_ix],
-  alpha = alpha,
-  eta = eta
-)
+  # Only adjust the significant SNP values
+  unbias_SNPs <- esmr::snp_beta_rb(
+    beta = dat$beta_hat[rand_ix],
+    se_beta = dat$s_estimate[rand_ix],
+    alpha = alpha,
+    eta = .eta
+  )
 
-ma_adj_dat$beta_hat[rand_ix] <- unbias_SNPs$beta_rb
-ma_adj_dat$s_estimate[rand_ix] <- unbias_SNPs$se_rb
+  ma_adj_dat$beta_hat[rand_ix] <- unbias_SNPs$beta_rb
+  ma_adj_dat$s_estimate[rand_ix] <- unbias_SNPs$se_rb
 
-rand_ix_flat <- unique(rand_ix[, 1])
+  # Check that the variance is not NA
+  valid_ix <- !is.na(unbias_SNPs$se_rb)
+  rand_ix <- rand_ix[valid_ix, ]
 
-## Fit NESMR on the Ma adjusted snps
-ma_model <- try(with(ma_adj_dat, esmr::esmr(
-  beta_hat_X = beta_hat,
-  se_X = s_estimate,
-  variant_ix = rand_ix_flat,
-  G = diag(3),
-  direct_effect_template = B_lower,
-  max_iter = 300)
-), silent = TRUE)
+  rand_ix_flat <- unique(rand_ix[, 1])
+
+  ## Fit NESMR on the Ma adjusted snps
+  try(with(ma_adj_dat, esmr::esmr(
+    beta_hat_X = beta_hat,
+    se_X = s_estimate,
+    variant_ix = rand_ix_flat,
+    G = diag(3),
+    direct_effect_template = B_lower,
+    max_iter = 300)
+  ), silent = TRUE)
+})
 
 cursed_mod_results <- extract_edge_info(cursed_model, true_beta)
 true_mod_results <- extract_edge_info(true_model, true_beta)
-ma_mod_results <- extract_edge_info(ma_model, true_beta)
+
+ma_mod_results <- lapply(1:seq_along(eta), function(i) {
+  cbind.data.frame(
+    extract_edge_info(ma_models[[i]], true_beta, name = paste0("ma_", i)),
+    eta = eta[i]
+  )
+})
 
 sim_results <- bind_rows(
   cursed_mod_results,
@@ -106,6 +123,6 @@ sim_results <- bind_rows(
   ma_mod_results
 )
 
-n_variants <- lapply(
-  list(true_ix, cursed_ix, rand_ix_flat), length
-)
+# n_variants <- lapply(
+#   list(true_ix, cursed_ix, rand_ix_flat), length
+# )
