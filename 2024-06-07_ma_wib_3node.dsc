@@ -15,7 +15,7 @@ simulate:  renv.R + utils.R + ma_wib_3node/sim_ma_wib_3node.R
   $seed: DSC_SEED
 
 fit_esmr: renv.R + utils.R + ma_wib_3node/fit_esmr_ma_wib_3node.R
-  eta: 0.5, 1
+  eta: c(0.5, 1)
   alpha: 1, 1e-3, 1e-5, 1e-8, 1e-10
   dat: $dat
   true_beta: $true_beta
@@ -25,5 +25,4 @@ fit_esmr: renv.R + utils.R + ma_wib_3node/fit_esmr_ma_wib_3node.R
   $ma_mod_results: ma_mod_results
   $cursed_model: cursed_model
   $true_model: true_model
-  $ma_model: ma_model
-  $n_variants: n_variants
+  $ma_models: ma_models
