@@ -8,12 +8,18 @@ output:
 bibliography: NESMR.bib
 ---
 
-```{r setup, include=FALSE}
+```{r setup}
+#| echo: false
+knitr::opts_chunk$set(echo = F, warning = F, message = F)
+```
+
+```{r}
 library(dplyr)
 library(tidyr)
 library(ggplot2)
-knitr::opts_chunk$set(echo = F)
-devtools::load_all("/Users/stefaneng/Projects/esmr")
+library(kableExtra)
+library(igraph)
+devtools::load_all("~/Projects/esmr/")
 
 effect_size_scale <- 0.2
 h2 <- 0.3
@@ -34,11 +40,76 @@ G <- matrix(
 
 G_total <- direct_to_total(G)
 
+# Replicates
+K <- 100
+
 # Full network without the diagonal
 B_lower <- lower.tri(G) + 0
 B_full <- matrix(1, nrow = 5, ncol = 5)
 diag(B_full) <- 0
+
+# Compute which edges should be null in direct and total G
+lower_null <- matrix_to_edgelist(G, lower_tri = TRUE) %>%
+  mutate(
+    null_edge = value == 0,
+    lower_edge = TRUE
+  ) %>%
+  select(-value)
+
+upper_null <- matrix_to_edgelist(upper.tri(G), lower_tri = FALSE) %>%
+  filter(value) %>%
+  mutate(
+    null_edge = TRUE,
+    lower_edge = FALSE
+  ) %>%
+  select(-value)
+
+lower_null_tot <- matrix_to_edgelist(G_total, lower_tri = TRUE) %>%
+  mutate(
+    null_edge = value == 0,
+    lower_edge = TRUE
+  ) %>%
+  select(-value)
+
+null_edges <- bind_rows(
+  lower_null,
+  upper_null
+)
+
+null_edges_tot <- bind_rows(
+  lower_null_tot,
+  upper_null
+)
 ```
+## Introduction
+
+### Overall goals
+
+1. Identify highest likelihood DAG and estimate direct effects within that DAG.
+2. Summarize uncertainty about DAG, potentially as posterior probabilities.
+
+### Internal (NESMR-based) strategies
+
+1. (gold standard) Enumerate all complete DAGs. Fit each with NESMR. Find the highest likelihood DAG to satisfy goal (1). Compute posterior probabilities as
+$$P(DAG \mid \text{data}) = \frac{P(\text{data} \mid DAG) P(DAG)}{\sum_{DAGS} P(\text{data} \mid DAG_j) P(DAG_j)}$$
+We could use a flat prior over the orderings (complete DAGs).
+  - **Note**: This is not include in this document but is implemented and will be testing with 4 node case.
+2. (previous version) Compute the p x p total effects matrix using p applications of MVMR (lets call this the MVMR-all total effects matrix). Use the minimum arc set strategy to identify the best graph. Refit NESMR to the best graph.
+3. (log det strategy version 1) Compute the MVMR-all total effects matrix. Project to the closest DAG, refit this DAG with NESMR. Use bootstrap resampling to obtain a confidence set of DAGs. It would be interesting to see how the frequency of alternative DAGs compares to the posterior probabilities computed in 1.
+4. (log det strategy version 2) Same as above but start with the NESMR-all total effects matrix.
+5. (graph cML analog versions 1 and 2) Compute MVMR-all or NESMR-all total effects matrix. Apply total to direct transformation. Either stop here and simply report effects or project into nearest DAG using the log det strategy.
+
+## Strategy
+I think there is some preliminary work we want to see before we launch into a full comparison of these. Here are the leftovers from questions that came up previously that it would be good to address first.  
+
+1. You previously looked at our standard 5 node example graph but I had some questions about information that wasn't presented. These were:
+	1. How does the NESMR-all graph compare to the MVMR-all graph on all edges (not just non-zeros)?
+	3. How does the graph that you get when you use the log det strategy to project either of these to the nearest DAG look compared to the truth.
+	4. How does this look compared to the feedback arc set graph?
+
+It would be nice to see answers to these questions for at least one iteration before launching into a large scale comparison.
+
+2. In order to compare strategies 1-5, you need a setting where finding the correct graph is somewhat difficult or where there are multiple consistent orderings, with probably five or fewer total traits. I am thinking that three node graphs may always be too easy but this hunch could be wrong. You may want to try 4 traits. I think you can probably make the problem harder by making effects smaller. You might also try making some effects antagonistic (negative confounding with positive direct effects). I am not sure if this will make it harder or not. To be able to tell if the problem is "hard", you can just run method (1) and look at the posterior probabilities. I think we'd like an example where there is an incorrect ordering that has a posterior probability more than a few percent if we can find one.
 
 ## Background
 
@@ -49,6 +120,7 @@ NESMR can be broken up into two main components:
 2. Finding the optimal network structure
 
 ### 1. Estimation
+
 Problem 1 is largely solved by the empirical Bayes approach that esmr uses.
 
 ### 2. Optimal network structure
@@ -89,11 +161,8 @@ $$
 $$
 
 The third acyclicity function $h_{ldet}$ is from [@bello2023].
-There is an additional requirement that the matrix $W$ is an M-matrix.
 
-> **Definition**: An _M-matrix_ is a matrix $A \in \mathbb R^{d \times d}$ such that $A = sI - B$ where $B \geq 0$ and $s > \rho(B)$ where $\rho$ is the specral radius (maximum absolute eigenvalue).
-
-Define $\mathbb W^s = \{ W \in \mathbb R^{d \times d} : W = sI - B, B \geq 0, s > \rho(B) \}$.
+Define $\mathbb W^s = \{ W \in \mathbb R^{d \times d} : s > \rho(W \circ W) \}$.
 
 Let $s > 0$ and let $h_{ldet}^s : \mathbb W^s \to \mathbb R$ be defined as
 
@@ -122,27 +191,48 @@ There might be a better way to do this step but the benefit is that we have a fu
 
 ## Simulation
 
-First, simulate and fit with three models/methods:
+Simulate using our standard five node example.
+Fit two effect matrices:
+1. NESMR-all total effects matrix
+2. MVMR-all direct effects matrix
 
-1. NESMR with correct ordering lower triangular
-2. NESMR with full matrix
-3. MVMR discovery matrix
+Since the NESMR effect are the _total effects_ I used the $G_{tot}$ as the true values and for the MVMR discovery network I used $G_{dir}$
+the edge from $4 \to 1$ and $5 \to 1$ will have a small total effect but no direct effect.
+The edge $5 \to 2$ also has a small amount of difference between total/direct effect.
+This is why these effects appear only in the NESMR-all effects matrix.
+In initial simulations is appears that the NESMR full matrix is able to recover the total effects about the same as the $n$ step MVMR matrix.
+
+### Direct effects
+```{r}
+plot(graph.adjacency(G != 0))
+```
 
 ```{r}
 kableExtra::kable(
   G,
   col.names = paste0('Trait', 1:5),
-  digits = 3) %>%
+  digits = 3,
+  caption = "True direct effects") %>%
+  kableExtra::kable_styling()
+```
+
+###  Total effects graph
+```{r}
+plot(graph.adjacency(G_total != 0))
+```
+
+```{r}
+kableExtra::kable(
+  G_total,
+  col.names = paste0('Trait', 1:5),
+  digits = 3,
+  caption = "True total effects") %>%
   kableExtra::kable_styling()
 ```
 
 ```{r, eval = FALSE}
 if (FALSE) {
-#library(esmr)
-
-# TODO: Why are we getting the same exact estimates for the beta?
-#start_seed <- sample(1:1e8, size = 
-sim_res <- replicate(100, {
+sim_res <- replicate(K, {
   # This is weird... we get completely identical dat for 2...n simulations...
   # unless we reset the seed. Where is the seed getting set??
   set.seed(NULL)
@@ -255,100 +345,155 @@ merged_res <- bind_rows(
 }), .id = "id") %>%
   filter(from != to)
 
-lower_null <- matrix_to_edgelist(G, lower_tri = TRUE) %>%
-  mutate(
-    null_edge = value == 0,
-    lower_edge = TRUE
-  ) %>%
-  select(-value)
-
-upper_null <- matrix_to_edgelist(upper.tri(G), lower_tri = FALSE) %>%
-  filter(value) %>%
-  mutate(
-    null_edge = TRUE,
-    lower_edge = FALSE
-  ) %>%
-  select(-value)
-
-null_edges <- bind_rows(
-  lower_null,
-  upper_null
-)
-
 # Add null edge information to the merged results
-merged_res <- left_join(
-    merged_res,
-    null_edges,
-    by = c('from', 'to')
-  )
+# merged_res <- left_join(
+#     merged_res,
+#     null_edges,
+#     by = c('from', 'to')
+#   )
 saveRDS(merged_res, 'nesmr_logdet.rds')
 }
 ```
 
-### Non-null edges
-
 ```{r, echo = FALSE}
+#| message: false
 merged_res <- readRDS('nesmr_logdet.rds')
-merged_res %>%
-  filter(
-    !null_edge
-  ) %>%
-  group_by(
-    from, to
-  ) %>%
-  summarise(
-    full_bias = mean(full_bias),
-    mvmr_bias = mean(mvmr_bias)
-  ) %>%
-  kableExtra::kable() %>%
-  kableExtra::kable_styling()
-```
-
-### Null edges
-
-```{r}
-merged_res %>%
-  filter(
-    null_edge
-  ) %>%
-  group_by(
-    from, to
-  ) %>%
-  summarise(
-    full_bias = mean(full_bias),
-    mvmr_bias = mean(mvmr_bias)
-  ) %>%
-  kableExtra::kable() %>%
-  kableExtra::kable_styling()
-
-null_res <- merged_res %>%
-  filter(
-    null_edge
-  ) %>%
+long_merged_res <- merged_res %>%
   # Convert full_bias and mvmr_bias to long format
   pivot_longer(
     cols = c(full_bias, mvmr_bias),
     names_to = 'method',
     values_to = 'bias'
-  )
+  ) %>%
+  select(-null_edge, -lower_edge)
 
-grouped_null_res <- null_res %>%
+all_null <- bind_rows(
+  cbind(null_edges, method = 'mvmr_bias'),
+  cbind(null_edges_tot, method = 'full_bias')
+)
+
+long_merged_res <- left_join(
+  long_merged_res,
+  all_null,
+  by = c('from', 'to', 'method'))
+```
+
+### Non-null edges
+
+```{r}
+#| message: false
+non_null_res <- long_merged_res %>%
+  filter(!null_edge)
+
+non_null_res %>%
+  group_by(
+    from, to, method
+  ) %>%
+  summarise(
+    mean = mean(bias),
+    sd = sd(bias)
+  ) %>%
+  pivot_wider(
+    names_from = method,
+    values_from = c(mean, sd)
+  ) %>%
+  kableExtra::kable(digits = 3) %>%
+  kableExtra::kable_styling()
+
+grouped_non_null_res <- non_null_res %>%
+  filter(from != to) %>%
   group_by(from, to, method) %>%
   summarize(mean_bias = mean(bias), bias_se = sd(bias))
 
-grouped_null_res$y.jitter <- as.numeric(interaction(grouped_null_res$from, grouped_null_res$to)) + ifelse(grouped_null_res$method == 'full_bias', 0.5, -0.1)
+grouped_non_null_res$from_to <- as.factor(paste0(grouped_non_null_res$from, "->", grouped_non_null_res$to))
+grouped_non_null_res$y.jitter <- as.numeric(grouped_non_null_res$from_to) + ifelse(grouped_non_null_res$method == 'full_bias', -0.1, 0.1)
 
-ggplot(grouped_null_res, aes(y = y.jitter, color = method)) +
+(ci_plot <- ggplot(grouped_non_null_res, aes(y = y.jitter, color = method)) +
   #geom_point(aes(x = bias, y = interaction(from, to), color = method)) +
   geom_point(
     aes(x = mean_bias), shape = 17) +
   geom_segment(aes(
-    x = mean_bias - 2 * bias_se,
-    xend = mean_bias + 2 * bias_se,
+    x = mean_bias - 1.96/sqrt(K) * bias_se,
+    xend = mean_bias + 1.96/sqrt(K) * bias_se,
     yend = y.jitter
   )) +
   geom_vline(xintercept = 0, linetype = 'dashed') +
+  # Make y-axis labels the same as the interaction levels
+  scale_y_continuous(
+    breaks = seq_along(levels(grouped_non_null_res$from_to)),
+    labels = levels(grouped_non_null_res$from_to)
+  ) +
+  ylab('') +
+  xlab('Mean bias + 95% CI') +
+  ggtitle("Non-null edges for NESMR-all vs MVMR-all complete graph") +
+  theme_minimal())
+
+ggsave('ci_plot_non_null_edges.png', ci_plot, width = 6, height = 12)
+
+ggplot(non_null_res, aes(x = bias, color = method)) +
+  facet_wrap(
+    ~ interaction(from, to)
+  ) + 
+  geom_density() +
+  geom_vline(xintercept = 0, linetype = 'dashed') +
+  geom_vline(
+    data = grouped_non_null_res,
+    mapping = aes(xintercept = mean_bias, color = method)
+  ) +
+  ggtitle("Non-null edges for NESMR-all vs MVMR-all complete graph") +
   theme_minimal()
+```
+
+### Null edges
+
+```{r}
+null_res <- long_merged_res %>%
+  filter(null_edge)
+
+null_res %>%
+  group_by(
+    from, to, method
+  ) %>%
+  summarise(
+    mean = mean(bias),
+    sd = sd(bias)
+  ) %>%
+  pivot_wider(
+    names_from = method,
+    values_from = c(mean, sd)
+  ) %>%
+  kableExtra::kable(digits = 3) %>%
+  kableExtra::kable_styling()
+
+grouped_null_res <- null_res %>%
+  filter(from != to) %>%
+  group_by(from, to, method) %>%
+  summarize(mean_bias = mean(bias), bias_se = sd(bias))
+
+grouped_null_res$from_to <- as.factor(paste0(grouped_null_res$from, "->", grouped_null_res$to))
+grouped_null_res$y.jitter <- as.numeric(grouped_null_res$from_to) + ifelse(grouped_null_res$method == 'full_bias', -0.1, 0.1)
+
+(ci_plot <- ggplot(grouped_null_res, aes(y = y.jitter, color = method)) +
+  #geom_point(aes(x = bias, y = interaction(from, to), color = method)) +
+  geom_point(
+    aes(x = mean_bias), shape = 17) +
+  geom_segment(aes(
+    x = mean_bias - 1.96/sqrt(K) * bias_se,
+    xend = mean_bias + 1.96/sqrt(K) * bias_se,
+    yend = y.jitter
+  )) +
+  geom_vline(xintercept = 0, linetype = 'dashed') +
+  # Make y-axis labels the same as the interaction levels
+  scale_y_continuous(
+    breaks = seq_along(levels(grouped_null_res$from_to)),
+    labels = levels(grouped_null_res$from_to)
+  ) +
+  ylab('') +
+  xlab('Mean bias + 95% CI') +
+  ggtitle("Null edges for NESMR-all vs MVMR-all complete graph") +
+  theme_minimal())
+
+ggsave('ci_plot_null_edges.png', ci_plot, width = 6, height = 12)
 
 ggplot(null_res, aes(x = bias, color = method)) +
   facet_wrap(
@@ -364,20 +509,15 @@ ggplot(null_res, aes(x = bias, color = method)) +
   theme_minimal()
 ```
 
-Since the NESMR effect are the _total effects_ I used the $G_{tot}$ as the true values and for the MVMR discovery network I used $G_{dir}$
-the edge from $4 \to 1$ and $5 \to 1$ will have a small total effect but no direct effect.
-The edge $5 \to 2$ also has a small amount of difference between total/direct effect.
-In initial simulations is appears that the NESMR full matrix is able to recover the total effects about the same as the $n$ step MVMR matrix.
-I think the benefits of this are that we have an actual likelihood from the NESMR model as well as the potential to use the logdet penalty to enforce acyclicity.
+## Total effect to DAG
 
-### Adding Log-Det penalty to the full matrix
-
-Simulate a single example
+Simulate a single example using the same five node graph
 
 ```{r}
-library(esmr)
-library(kableExtra)
+#| echo: true
+#| results: 'hide'
 
+set.seed(13)
 effect_size_scale <- 0.2
 h2 <- 0.3
 J <- 5000
@@ -398,7 +538,6 @@ G <- matrix(
 # Full network without the diagonal
 B_full <- matrix(1, nrow = 5, ncol = 5)
 diag(B_full) <- 0
-#set.seed(13)
 dat <- GWASBrewer::sim_mv(
   G = G,
   N = N,
@@ -423,172 +562,86 @@ res_nesmr_full <- with(dat, esmr(
   max_iter = 300))
 
 total_est <- t(res_nesmr_full$f$fgbar) 
+diag(total_est) <- 0
+total_est_se <- res_nesmr_full$f$fg2bar - res_nesmr_full$f$fgbar^2
 ```
 
 At this point, we are at a similar place to where [@lin2023] uses network deconvolution to get direct effects.
+Using their total to direct projection function we can get the direct effects from the total effects but it is not clear to me how to understand the projection.
 
 ```{r}
-# Lin 2023 does almost exactly this and directly uses 
-# Diagonal, e.g. cycles, are removed
-# Diagonal should be all zeros if no cycles in underlying graph
-direct_deconv <- total_est %*% solve(diag(ncol(G)) + total_est)
+#| echo: true
+#| eval: false
+#| file: ~/Projects/esmr/R/graphcml_utils.R
+```
+
+```{r}
+direct_deconv <- total_to_dir_projection_gcml(total_est, maxit = 1000)
+# Set to zero ?
 diag(direct_deconv) <- 0
+kable(direct_deconv,
+      digits = 3,
+      caption = 'Graph-cML total to direct effect projection',
+      col.names = paste0('Trait', 1:5)) %>%
+  kable_styling()
 ```
 
 The first approach with log-det penalty is to directly optimize the $h_{ldet}^s$ function with the total effect estimates.
 An acyclic total effects adjacency matrix will be acyclic in the direct effects as well.
-While there is no _guarantee_ that our total effects matrix will be an M-matrix it seems to be in practice.
-Selecting $s = \max \{ \theta^2, 1 \} + 0.01$ seems to work well in practice since we will always have $s > \rho(\theta)$ and $sI - \theta$ will be negative unless there is some strange issues where there are vastly different high positive effect on the upper triangular and large negative effects on lower triangular or vise versa.
-While the optimization brings the $h_{det}^s$ _close_ to zero there are still small effects that technically make this not a DAG.
-We could set some threshold here to truly make it a DAG.
+Selecting $s = \max_{i,j} \{ \beta_{i,j}^2 \} + 0.1$ seems to work well in practice since we will always have $s > \rho(\beta)$.
+While the optimization brings the $h_{det}^s$ _close_ to zero there are still small effects that technically make this not a DAG and need to use `zapsmall` to remove these small effects.
 
 ```{r}
-d <- ncol(G)
-s_max <- max(c(total_est^2, 1)) + 0.01
-ix_beta <- cbind(res_nesmr_full$beta$beta_k, res_nesmr_full$beta$beta_j)
+#| echo: true
+#| eval: false
+#| file: ~/Projects/esmr/R/project_to_DAG.R
+```
 
-# beta_scale <- scale(res_nesmr_full$beta$beta_m)
-s_max <- max(c(res_nesmr_full$beta$beta_m^2, 1)) + 0.01
+Then we can project the total effects to the nearest DAG using the log-det penalty.
+We try to zap the least number of digits possible that still is a DAG.
 
-result <- optim(
-  par = res_nesmr_full$beta$beta_m,
-  fn = h_det_vec,
-  gr = h_det_grad_vec,
-  ix = ix_beta,
-  s = s_max,
-  d = d,
-  method = "BFGS",
-  control = list(maxit = 2000, trace = 0)
-)
+```{r, echo = TRUE}
+logdet_total_est <- project_to_DAG(total_est, s = max(total_est^2) + 0.1)
+for (i in seq(7, 1, by = -1)) {
+  logdet_total_est <- zapsmall(logdet_total_est, i)
+  if (is_dag_matrix(logdet_total_est)) {
+    print(sprintf("logdet total effects are a DAG with %s digits of zapping", i))
+    break
+  }
+}
+if (! is_dag_matrix(logdet_total_est)) {
+  stop("logdet total effect not not a DAG event with 2 digits of zapping... something went wrong")
+}
 
-# unscale(result$par)
-
-# Build the new matrix
-logdet_adj_matrix <-  matrix(0, ncol = d, nrow = d)
-logdet_adj_matrix[ix_beta] <- result$par
-
-kable(total_est, digits = 5, caption = 'NESMR total effects') %>%
+kable(logdet_total_est,
+      digits = 3,
+      caption = sprintf('Graph-cML total to direct effect projection with %s digits zapping', i),
+      col.names = paste0('Trait', 1:5)) %>%
   kable_styling()
 
-kable(logdet_adj_matrix, digits = 5, caption = 'Log-Det optimized total effects') %>%
-  kable_styling()
+plot(graph.adjacency(logdet_total_est != 0))
 ```
 
 ## Estimating standard error in the estimates
 
 One approach to estimating the standard error in the estimates is to use resample using the standard errors from the NESMR model and combine the results into a parametric bootstrap version.
+We seem to get the same DAG in most cases (all?) in both lower and higher power cases.
 
-```{r}
+```{r, echo = TRUE}
 n_resample <- 100
-s_max <- max(c(total_est^2, 1)) + 0.01
-ix_beta <- cbind(res_nesmr_full$beta$beta_k, res_nesmr_full$beta$beta_j)
 
-resample_results <- lapply(seq_len(n_resample), function(i) {
-  beta_resample <- res_nesmr_full$beta$beta_m + sapply(res_nesmr_full$beta$beta_s, rnorm, n = 1, mean = 0)
-  # s_max_reample <- max(beta_resample^2, 1) + 0.01
-  result <- optim(
-    par = beta_resample,
-    fn = h_det_vec,
-    gr = h_det_grad_vec,
-    ix = ix_beta,
-    s = s_max,
-    d = d,
-    method = "BFGS",
-    control = list(maxit = 2000, trace = 0)
+resample_results <- replicate(n_resample, {
+  resample_total_effects <- total_est + sapply(total_est_se, rnorm, n = 1, mean = 0)
+  # TODO: Do we need to keep this?
+  s_resample <- max(resample_total_effects^2) + 0.1
+  resample_logdet_total_est <- tryCatch(
+    project_to_DAG(total_est, s = s_resample),
+    warning = function(e) {
+      project_to_DAG(total_est, s = s_resample + 0.1)
+    }
   )
-  
-  
-  list(
-    beta = result$par,
-    value = result$value
-    )
-  })
-
-# resample_results
-# test_digits <- seq(10, 5, by = -1)
-# round_results <- lapply(resample_results, function(x) {
-#   val <- x$value
-#   i <- 1
-#   while(val != 0 && i > length(test_digits)) {
-#     round_beta <- round(x$beta, digits = test_digits[i])
-#     val <- h_det_vec(round_beta, ix = ix_beta, s = s_max, d = d)
-#     i <- i + 1
-#   }
-#   if (val != 0) {
-#     # print('No solution found')
-#     return(-1)
-#   } else {
-#     return(test_digits)
-#   }
-# })
+  resample_logdet_total_est
+}, simplify = FALSE)
 ```
-
-Can we say something like... we need to round to XX digits to get h_det truly == 0?
-
-
-### Alternative approach
-
-An alternative approach copies the algorithm from [@bello2023] and uses the log-likelihood as the objective function.
-
-Let $\theta = \{ \beta_{i,j} : i \not = j, i,j = 1,2, \ldots, n\}$
-We then use a modified version of the [@bello2023] optimization
-
-$$
-\min_\theta L (\theta) + \gamma_1 \|\theta\|_1 \quad \text{subject to } h_{ldet}^s(W(\theta)) = 0
-$$
-
-where $\gamma_1$ is an $\ell_1$ penalty.
-Note that this might not be necessary or desired since esmr already does some shrinkage.
-
-
-![DAGMA Algorithm 1](./DAGMA_algo1.png)
-
-
-
-```{r, eval = FALSE}
-s_max <- max(total_effects^2, 1) + 0.01
-
-# Not sure if this is the right way to do this...
-# This is basically a copy of the paper's algorithm
-# Really slow!!! decaying (numeric MLE + l1 penalty) + h_det
-ix_beta <- cbind(res_nesmr_full$beta$beta_k, res_nesmr_full$beta$beta_j)
-max_iter <- 10
-mu_t <- vector('integer', length = max_iter)
-mu_t <- c(1, 2^(-seq_len(max_iter - 2)), 0)
-l1_param <- 0.01
-optim_res <- list()
-for (i in seq_len(max_iter)) {
-  optim_res[[i]] <- optim(
-    par = res_nesmr_full$beta$beta_m,
-    fn = function(x) {
-      adj_mat_beta <- matrix(0, nrow = 5, ncol = 5)
-      adj_mat_beta[ix_beta] <- x
-      h_det_res <- h_det(adj_mat_beta, s = s_max + 0.1)
-      if (is.nan(h_det_res)) {
-        browser()
-      }
-      mu_t[i] * (-log_py(res_nesmr_full, beta = x) + l1_param * sum(abs(x))) + h_det_res
-    },
-    method = 'L-BFGS-B',
-    control = list(trace = 6, maxit = 10)
-  )
-  print(optim_res)
-}
-
-## Step 2
-# Just optimizing the logdet part
-adj_mat_beta <- matrix(0, nrow = 5, ncol = 5)
-adj_mat_beta[ix_beta] <- optim_res[[max_iter]]$par
-```
-
-## Issues and Future Work
-
-The idea with log-det is promising but there are a few questions to answer before moving forward:
-
-  - This again selects a "best" DAG structure but it is unclear how we could find other DAGs that are close by
-  - I am not sure how we can propogate the standard error from the original NESMR standard errors into the log-det optimization
-    - It seems like it should be possible but I am not sure how to do it
-  - Potential identifiability issues if we allow for all $n(n-1)$ effects to be estimated at once
-  - Unclear how we show consistency for network estimation
 
 ## References
