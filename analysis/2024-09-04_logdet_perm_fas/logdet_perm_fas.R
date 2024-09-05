@@ -1,3 +1,14 @@
+fas_bootstrap <- function(
+    total_est, total_est_se, reps = 100) {
+  d <- ncol(total_est)
+  non_diag_i <- -seq(1, d^2, by = d + 1)
+  replicate(reps, {
+    bootstrap_tot_est <- matrix(0, nrow = d, ncol = d)
+    bootstrap_tot_est[non_diag_i] <- total_est[non_diag_i] + rnorm(d * (d - 1), mean = 0, sd = total_est_se[non_diag_i])
+    maximal_acyclic_subgraph(bootstrap_tot_est)
+  }, simplify = FALSE)
+}
+
 project_DAG_bootstrap <- function(
     total_est, total_est_se, reps = 100,
     s = 1.1,
@@ -66,18 +77,26 @@ logdet_perm_fas_sim <- function(G) {
   # TODO: Parametric bootstrap for each
 
   rtn_list$mvmr_DAG <- project_to_DAG(
-    mvmr_matrix$beta,
+    mvmr_matrix$beta_hat,
     threshold_to_DAG = TRUE,
     maxit = 2000
   )
 
   rtn_list$nesmr_full_DAG <- project_to_DAG(
-    nesmr_full$beta,
+    nesmr_full$beta_hat,
     threshold_to_DAG = TRUE,
     maxit = 2000
   )
 
+  rtn_list$nesmr_full_DAG$FAS_matrix <- maximal_acyclic_subgraph(nesmr_full$beta_hat)
+  rtn_list$mvmr_DAG$FAS_matrix <- maximal_acyclic_subgraph(mvmr_matrix$beta_hat)
+
   rtn_list$mvmr_DAG_bootstrap <- project_DAG_bootstrap(
+    total_est = mvmr_matrix$beta_hat,
+    total_est_se = mvmr_matrix$se_beta_hat
+  )
+
+  rtn_list$mvmr_FAS_bootstrap <- fas_bootstrap(
     total_est = mvmr_matrix$beta_hat,
     total_est_se = mvmr_matrix$se_beta_hat
   )
@@ -87,7 +106,10 @@ logdet_perm_fas_sim <- function(G) {
     total_est_se = nesmr_full$se_beta_hat
   )
 
-  # TODO: Parameteric bootstrap for each
+  rtn_list$nesmr_FAS_bootstrap <- fas_bootstrap(
+    total_est = nesmr_full$beta_hat,
+    total_est_se = nesmr_full$se_beta_hat
+  )
 
   rtn_list$all_ordering <- with(dat, nesmr_all_permn(
     beta_hat = beta_hat,
@@ -119,41 +141,53 @@ plot_sim_results <- function(z, G) {
     config = permn_config
   )
 
-  mvmr_bootstraps <- lapply(z$mvmr_DAG_bootstrap, function(x) (x$W != 0) + 0) %>%
-    lapply(function(x) paste0(as.numeric(x), collapse = "")) %>%
-    unlist() %>%
-    table() %>%
-    as.data.frame() %>%
-    setNames(c('config', 'Freq'))
-  mvmr_bootstraps$mvmr_bootstrap_percent <- mvmr_bootstraps$Freq / sum(mvmr_bootstraps$Freq)
-  mvmr_bootstraps$Freq <- NULL
+  .bootstrap_to_df <- function(x, method = "") {
+    tmp_res <- lapply(x, function(x) (x != 0) + 0) %>%
+      lapply(function(x) paste0(as.numeric(x), collapse = "")) %>%
+      unlist() %>%
+      table() %>%
+      as.data.frame() %>%
+      setNames(c('config', 'Freq'))
+    tmp_res[[method]] <- tmp_res$Freq / sum(tmp_res$Freq)
+    tmp_res$Freq <- NULL
+    tmp_res
+  }
 
-  nesmr_full_bootstraps <- lapply(z$nesmr_full_bootstrap, function(x) (x$W != 0) + 0) %>%
-    lapply(function(x) paste0(as.numeric(x), collapse = "")) %>%
-    unlist() %>%
-    table() %>%
-    as.data.frame() %>%
-    setNames(c('config', 'Freq'))
-  nesmr_full_bootstraps$nesmr_bootstrap_percent <- nesmr_full_bootstraps$Freq / sum(nesmr_full_bootstraps$Freq)
-  nesmr_full_bootstraps$Freq <- NULL
+  mvmr_bootstraps <- .bootstrap_to_df(lapply(z$mvmr_DAG_bootstrap, function(x) x$W), method = "mvmr_project_percent")
+  #mvmr_bootstraps$algo <- "logdet"
+  nesmr_full_bootstraps <- .bootstrap_to_df(lapply(z$nesmr_full_bootstrap, function(x) x$W), method = "nesmr_project_percent")
+  nesmr_full_bootstraps$algo <- "logdet"
+  mvmr_FAS <- .bootstrap_to_df(z$mvmr_FAS_bootstrap, method = "mvmr_FAS_percent")
+  #mvmr_FAS$algo <- "FAS"
+  nesmr_FAS <- .bootstrap_to_df(z$nesmr_FAS_bootstrap, method = "nesmr_FAS_percent")
+  #nesmr_FAS$algo <- "FAS"
 
   simulation_results <- merge(simulation_results, mvmr_bootstraps, by = 'config', all.x = TRUE)
   simulation_results <- merge(simulation_results, nesmr_full_bootstraps, by = 'config', all.x = TRUE)
+  simulation_results <- merge(simulation_results, mvmr_FAS, by = 'config', all.x = TRUE)
+  simulation_results <- merge(simulation_results, nesmr_FAS, by = 'config', all.x = TRUE)
 
   simulation_results <- arrange(simulation_results, correct_subset, posterior_probs)
   simulation_results$config_int <- rev(seq_len(nrow(simulation_results)))
 
   # Wide to long format for simulation results using pivot_longer
   sim_results_long <- pivot_longer(simulation_results,
-                                   cols = c('mvmr_bootstrap_percent', 'nesmr_bootstrap_percent', 'posterior_probs'),
+                                   cols = c(
+                                     'mvmr_project_percent', 'nesmr_project_percent',
+                                     'mvmr_FAS_percent', 'nesmr_FAS_percent',
+                                     'posterior_probs'),
                                    names_to = 'method', values_to = 'percent')
+
+  sim_results_long$algo <- ifelse(grepl('FAS', sim_results_long$method), 'FAS',
+                                  ifelse(grepl('project', sim_results_long$method), 'logdet', 'loglik'))
 
   sim_results_long$percent[is.na(sim_results_long$percent)] <- 0
 
   #simulation_results <- melt(simulation_results, id.vars = c('config', 'correct_subset'))
   p <- ggplot(sim_results_long) +
     geom_point(aes(x = config_int - 0.5, y = percent,
-                   color = method), position = position_dodge(0.5)) +
+                   color = method,
+                   shape = algo), position = position_dodge(0.5),) +
     geom_vline(
       xintercept = simulation_results$config_int - 1,
       color = ifelse(which(rev(!simulation_results$correct_subset))[1] == simulation_results$config_int, "orange", "grey50")
