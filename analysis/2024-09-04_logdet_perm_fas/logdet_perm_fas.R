@@ -133,12 +133,26 @@ plot_sim_results <- function(z, G) {
     all(x[G != 0] == 1)
   }))
 
+  correct_config <- unlist(lapply(z$all_ordering$B_template, function(x) {
+    all(x == (G != 0))
+  }))
+
+  .matrix_to_str <- function(B, collapse = "") {
+    paste0(
+      apply(B, 1, function(x) {
+        paste0(x, collapse = collapse)
+      }),
+      collapse = "\n")
+  }
+
   permn_config <- unlist(lapply(z$all_ordering$B_template, function(x) paste0(as.numeric(x), collapse = "")))
+  permn_config_axis <- unlist(lapply(z$all_ordering$B_template, .matrix_to_str))
 
   simulation_results <- data.frame(
     correct_subset = correct_subset,
     posterior_probs = z$all_ordering$posterior_probs,
-    config = permn_config
+    config = permn_config,
+    config_axis = permn_config_axis
   )
 
   .bootstrap_to_df <- function(x, method = "") {
@@ -187,7 +201,8 @@ plot_sim_results <- function(z, G) {
   p <- ggplot(sim_results_long) +
     geom_point(aes(x = config_int - 0.5, y = percent,
                    color = method,
-                   shape = algo), position = position_dodge(0.5),) +
+                   shape = algo), position = position_dodge(0.5),
+               size = 1.5) +
     geom_vline(
       xintercept = simulation_results$config_int - 1,
       color = ifelse(which(rev(!simulation_results$correct_subset))[1] == simulation_results$config_int, "orange", "grey50")
@@ -195,8 +210,16 @@ plot_sim_results <- function(z, G) {
     # Remove x-axis labels
     scale_x_continuous(
       breaks = simulation_results$config_int - 0.5,
-      labels = simulation_results$config_int) +
+      labels = simulation_results$config_axis
+      ) +
+    annotate(
+      "label",
+      x = 12.5,
+      y = 0.5,
+      label = paste0("True graph:\n", paste0(capture.output(print(G)), collapse = "\n"))
+    ) +
     xlab('DAG Configuration') +
+    ylim(c(0, 1)) +
     theme_classic()
 
   return(list(
@@ -217,16 +240,16 @@ G3 <- matrix(
 
 G3_2 <- matrix(
   c(0, 0, 0,
-    0.5, 0, 0,
-    0.5, 0, 0),
+    0.075, 0, 0,
+    0.075, 0, 0),
   nrow = 3,
   byrow = TRUE
 )
 
 G3_3 <- matrix(
   c(0, 0, 0,
-    0.5, 0, 0,
-    0, 0.5, 0),
+    0.075, 0, 0,
+    0, 0.075, 0),
   nrow = 3,
   byrow = TRUE
 )
@@ -235,6 +258,7 @@ set.seed(13)
 G3_sim_results <- logdet_perm_fas_sim(G3)
 set.seed(132)
 G3_2_sim_results <- logdet_perm_fas_sim(G3_2)
+set.seed(133)
 G3_3_sim_results <- logdet_perm_fas_sim(G3_3)
 
 
@@ -242,9 +266,9 @@ plot_G3_res <- plot_sim_results(G3_sim_results, G3)
 plot_G3_2_res <- plot_sim_results(G3_2_sim_results, G3_2)
 plot_G3_3_res <- plot_sim_results(G3_3_sim_results, G3_3)
 
-ggsave(print("~/Projects/NESMR-simulations/results/2024-09-05_three_node_one_edge.png"),
-       plot_G3_res$plot, width = 12, height = 6)
-ggsave(print("~/Projects/NESMR-simulations/results/2024-09-05_three_node_collider.png"),
-       plot_G3_2_res$plot, width = 12, height = 6)
-ggsave(print("~/Projects/NESMR-simulations/results/2024-09-05_three_node_mediation.png"),
-       plot_G3_3_res$plot, width = 12, height = 6)
+ggsave(print("~/Projects/NESMR-simulations/results/2024-09-06_three_node_one_edge.png"),
+       plot_G3_res$plot, width = 14, height = 6)
+ggsave(print("~/Projects/NESMR-simulations/results/2024-09-06_three_node_collider.png"),
+       plot_G3_2_res$plot, width = 14, height = 6)
+ggsave(print("~/Projects/NESMR-simulations/results/2024-09-06_three_node_mediation.png"),
+       plot_G3_3_res$plot, width = 14, height = 6)
