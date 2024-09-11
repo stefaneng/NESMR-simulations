@@ -1,3 +1,9 @@
+library(dplyr)
+library(plyr)
+library(tidyr)
+library(ggplot2)
+
+
 fas_bootstrap <- function(
     total_est, total_est_se, reps = 100) {
   d <- ncol(total_est)
@@ -260,7 +266,6 @@ set.seed(132)
 G3_2_sim_results <- logdet_perm_fas_sim(G3_2)
 set.seed(133)
 G3_3_sim_results <- logdet_perm_fas_sim(G3_3)
-
 
 plot_G3_res <- plot_sim_results(G3_sim_results, G3)
 plot_G3_2_res <- plot_sim_results(G3_2_sim_results, G3_2)
