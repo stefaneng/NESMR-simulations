@@ -2,18 +2,18 @@ library(dplyr)
 library(plyr)
 library(tidyr)
 library(ggplot2)
+devtools::load_all("/Users/stefaneng/Projects/esmr")
 
-
-fas_bootstrap <- function(
-    total_est, total_est_se, reps = 100) {
-  d <- ncol(total_est)
-  non_diag_i <- -seq(1, d^2, by = d + 1)
-  replicate(reps, {
-    bootstrap_tot_est <- matrix(0, nrow = d, ncol = d)
-    bootstrap_tot_est[non_diag_i] <- total_est[non_diag_i] + rnorm(d * (d - 1), mean = 0, sd = total_est_se[non_diag_i])
-    maximal_acyclic_subgraph(bootstrap_tot_est)
-  }, simplify = FALSE)
-}
+# fas_bootstrap <- function(
+#     total_est, total_est_se, reps = 100) {
+#   d <- ncol(total_est)
+#   non_diag_i <- -seq(1, d^2, by = d + 1)
+#   replicate(reps, {
+#     bootstrap_tot_est <- matrix(0, nrow = d, ncol = d)
+#     bootstrap_tot_est[non_diag_i] <- total_est[non_diag_i] + rnorm(d * (d - 1), mean = 0, sd = total_est_se[non_diag_i])
+#     maximal_acyclic_subgraph(bootstrap_tot_est)
+#   }, simplify = FALSE)
+# }
 
 project_DAG_bootstrap <- function(
     total_est, total_est_se, reps = 100,
@@ -36,7 +36,7 @@ project_DAG_bootstrap <- function(
   # TODO: Standard error for each configuration ?
 }
 
-logdet_perm_fas_sim <- function(G) {
+logdet_perm_fas_sim <- function(G, permute = TRUE) {
   d <- ncol(G)
   stopifnot(nrow(G) == d)
   h2 <- 0.3
@@ -44,7 +44,6 @@ logdet_perm_fas_sim <- function(G) {
   N <- 20000
   pi_J <- 0.1
   alpha <- 5e-8
-  d <- n
   lambda <- qnorm(1 - alpha / 2)
   dat <- GWASBrewer::sim_mv(
     G = G,
@@ -67,26 +66,11 @@ logdet_perm_fas_sim <- function(G) {
 
   rtn_list <- list()
 
-  # Fit MVMR matrix
-  mvmr_matrix <- with(dat, nesmr_complete_mvmr(
-      beta_hat = beta_hat,
-      se_beta_hat = s_estimate,
-      pval_select = pval_true
-    ))
-
   nesmr_full <- with(dat, nesmr_complete(
       beta_hat = beta_hat,
       se_beta_hat = s_estimate,
       pval_select = pval_true
     ))
-
-  # TODO: Parametric bootstrap for each
-
-  rtn_list$mvmr_DAG <- project_to_DAG(
-    mvmr_matrix$beta_hat,
-    threshold_to_DAG = TRUE,
-    maxit = 2000
-  )
 
   rtn_list$nesmr_full_DAG <- project_to_DAG(
     nesmr_full$beta_hat,
@@ -94,47 +78,69 @@ logdet_perm_fas_sim <- function(G) {
     maxit = 2000
   )
 
-  rtn_list$nesmr_full_DAG$FAS_matrix <- maximal_acyclic_subgraph(nesmr_full$beta_hat)
-  rtn_list$mvmr_DAG$FAS_matrix <- maximal_acyclic_subgraph(mvmr_matrix$beta_hat)
-
-  rtn_list$mvmr_DAG_bootstrap <- project_DAG_bootstrap(
-    total_est = mvmr_matrix$beta_hat,
-    total_est_se = mvmr_matrix$se_beta_hat
-  )
-
-  rtn_list$mvmr_FAS_bootstrap <- fas_bootstrap(
-    total_est = mvmr_matrix$beta_hat,
-    total_est_se = mvmr_matrix$se_beta_hat
-  )
-
   rtn_list$nesmr_full_bootstrap <- project_DAG_bootstrap(
     total_est = nesmr_full$beta_hat,
     total_est_se = nesmr_full$se_beta_hat
   )
 
-  rtn_list$nesmr_FAS_bootstrap <- fas_bootstrap(
-    total_est = nesmr_full$beta_hat,
-    total_est_se = nesmr_full$se_beta_hat
-  )
+  unique_configs <- unique(lapply(rtn_list$nesmr_full_bootstrap, function(x) {
+    (x$W != 0) + 0
+  }))
+
+  # Generate all permutations
+  # Simple way is to just find all the unique configs that are a subset of the unique configs
+  all_perms <- generate_dags_with_permutations(d)
+
+  unique_config_subsets <- unlist(lapply(unique_configs, function(x) {
+    all_perms[sapply(all_perms, function(y) {
+      # TODO: Could move this into own function
+      sum((y == 0) & x) == 0
+    })]
+  }), recursive = FALSE)
+
+  # Only take the unique subsets
+  unique_config_subsets <- unique(unique_config_subsets)
+
+  # TODO: What we really want to do is _stop_ if a superset graph is found will all significant edges
+
+  rtn_list$refit_mods <- lapply(unique_config_subsets, function(B) {
+    trait_ix <- which(rowSums(B) > 0)
+    minp_trait <- apply(pval_true[, trait_ix], 1, min)
+    trait_ix <- which(minp < alpha)
+
+    with(dat, esmr(
+      beta_hat_X = beta_hat,
+      se_X = s_estimate,
+      variant_ix = trait_ix,
+      G = diag(d), # required for network problem
+      direct_effect_template = B))
+  })
+
+  rtn_list$refit_significant <- unique(lapply(rtn_list$refit_mods, function(x) {
+    (exp(x$pvals_dm) < 0.05) + 0
+  }))
+
+  # TODO: Refit all subsets of DAGs that are significant
 
   rtn_list$all_ordering <- with(dat, nesmr_all_permn(
     beta_hat = beta_hat,
     se_beta_hat = s_estimate,
-    B_templates = NULL,
     posterior_probs = TRUE,
-    all_DAGs = TRUE
+    all_DAGs = TRUE,
+    return_model = TRUE,
+    B_templates = all_perms
   ))
+
+  log_lik_order <- order(rtn_list$all_ordering$log_lik, decreasing = TRUE)
+  # Sort each list by the log-likelihood
+  rtn_list$all_ordering <- lapply(rtn_list$all_ordering, function(x) {
+    x[log_lik_order]
+  })
 
   return(rtn_list)
 }
 
-plot_sim_results <- function(z, G) {
-  log_lik_order <- order(z$all_ordering$log_lik, decreasing = TRUE)
-  # Sort each list by the log-likelihood
-  z$all_ordering <- lapply(z$all_ordering, function(x) {
-    x[log_lik_order]
-  })
-
+process_sim_results <- function(z, G) {
   correct_subset <- unlist(lapply(z$all_ordering$B_template, function(x) {
     all(x[G != 0] == 1)
   }))
@@ -156,7 +162,11 @@ plot_sim_results <- function(z, G) {
 
   simulation_results <- data.frame(
     correct_subset = correct_subset,
+    correct_config = correct_config,
     posterior_probs = z$all_ordering$posterior_probs,
+    posterior_probs_n_edge = z$all_ordering$posterior_probs_n_edge,
+    log_lik = z$all_ordering$log_lik,
+    AIC = z$all_ordering$aic,
     config = permn_config,
     config_axis = permn_config_axis
   )
@@ -170,53 +180,76 @@ plot_sim_results <- function(z, G) {
       setNames(c('config', 'Freq'))
     tmp_res[[method]] <- tmp_res$Freq / sum(tmp_res$Freq)
     tmp_res$Freq <- NULL
+    tmp_res$config <- as.character(tmp_res$config)
     tmp_res
   }
 
-  mvmr_bootstraps <- .bootstrap_to_df(lapply(z$mvmr_DAG_bootstrap, function(x) x$W), method = "mvmr_project_percent")
-  #mvmr_bootstraps$algo <- "logdet"
   nesmr_full_bootstraps <- .bootstrap_to_df(lapply(z$nesmr_full_bootstrap, function(x) x$W), method = "nesmr_project_percent")
   nesmr_full_bootstraps$algo <- "logdet"
-  mvmr_FAS <- .bootstrap_to_df(z$mvmr_FAS_bootstrap, method = "mvmr_FAS_percent")
-  #mvmr_FAS$algo <- "FAS"
-  nesmr_FAS <- .bootstrap_to_df(z$nesmr_FAS_bootstrap, method = "nesmr_FAS_percent")
-  #nesmr_FAS$algo <- "FAS"
 
-  simulation_results <- merge(simulation_results, mvmr_bootstraps, by = 'config', all.x = TRUE)
   simulation_results <- merge(simulation_results, nesmr_full_bootstraps, by = 'config', all.x = TRUE)
-  simulation_results <- merge(simulation_results, mvmr_FAS, by = 'config', all.x = TRUE)
-  simulation_results <- merge(simulation_results, nesmr_FAS, by = 'config', all.x = TRUE)
 
   simulation_results <- arrange(simulation_results, correct_subset, posterior_probs)
   simulation_results$config_int <- rev(seq_len(nrow(simulation_results)))
 
-  # Wide to long format for simulation results using pivot_longer
-  sim_results_long <- pivot_longer(simulation_results,
-                                   cols = c(
-                                     'mvmr_project_percent', 'nesmr_project_percent',
-                                     'mvmr_FAS_percent', 'nesmr_FAS_percent',
-                                     'posterior_probs'),
-                                   names_to = 'method', values_to = 'percent')
+  simulation_results
+}
 
-  sim_results_long$algo <- ifelse(grepl('FAS', sim_results_long$method), 'FAS',
-                                  ifelse(grepl('project', sim_results_long$method), 'logdet', 'loglik'))
+plot_sim_results <- function(sim_results, G, max_configs = 30) {
+  # Remove small results
+  sim_results <- sim_results[
+    sim_results$config_int <= max_configs,
+  ]
+
+  # Wide to long format for simulation results using pivot_longer
+  sim_results_long <- pivot_longer(
+    sim_results,
+    cols = c(
+      'nesmr_project_percent',
+      'posterior_probs_n_edge',
+      'posterior_probs'
+    ),
+    names_to = 'method', values_to = 'percent') %>%
+    arrange(desc(correct_subset), desc(log_lik))
+
+  sim_results_long$algo <- ifelse(grepl('project', sim_results_long$method), 'logdet', 'loglik')
 
   sim_results_long$percent[is.na(sim_results_long$percent)] <- 0
 
-  #simulation_results <- melt(simulation_results, id.vars = c('config', 'correct_subset'))
+  cs <- which(sim_results$correct_config)[1]
+
+  min_AIC <- min(sim_results$AIC)
+
+  #sim_results <- melt(sim_results, id.vars = c('config', 'correct_subset'))
   p <- ggplot(sim_results_long) +
+    # Fill in background area if we have correct configuration
+    annotate(
+      'rect',
+      xmin = sim_results$config_int[cs] - 1,
+      xmax = sim_results$config_int[cs],
+      ymin = -0.05,
+      ymax = 1.05,
+      alpha = 0.5,
+      fill = "orange"
+    ) +
     geom_point(aes(x = config_int - 0.5, y = percent,
                    color = method,
-                   shape = algo), position = position_dodge(0.5),
+                   shape = method), position = position_dodge(0.5),
                size = 1.5) +
     geom_vline(
-      xintercept = simulation_results$config_int - 1,
-      color = ifelse(which(rev(!simulation_results$correct_subset))[1] == simulation_results$config_int, "orange", "grey50")
+      xintercept = sim_results$config_int - 1,
+      color = ifelse(which(rev(!sim_results$correct_subset))[1] == sim_results$config_int, "orange", "grey50")
+    ) +
+    annotate(
+      "text",
+      x = sim_results$config_int - 0.5,
+      y = 1,
+      label = round(min_AIC - sim_results$AIC, 1)
     ) +
     # Remove x-axis labels
     scale_x_continuous(
-      breaks = simulation_results$config_int - 0.5,
-      labels = simulation_results$config_axis
+      breaks = sim_results$config_int - 0.5,
+      labels = sim_results$config_axis
       ) +
     annotate(
       "label",
@@ -225,20 +258,21 @@ plot_sim_results <- function(z, G) {
       label = paste0("True graph:\n", paste0(capture.output(print(G)), collapse = "\n"))
     ) +
     xlab('DAG Configuration') +
-    ylim(c(0, 1)) +
+    coord_cartesian(
+      xlim = c(1.2, max(sim_results$config_int) + 1),
+      ylim = c(0,1), clip = "off"
+    ) +
     theme_classic()
 
   return(list(
-    data = sim_results_long,
+    sim_results_long = sim_results_long,
     plot = p
   ))
 }
-# TODO: Want to plot with d groups:
-# One for each number of parameters in the permutations
 
 G3 <- matrix(
   c(0, 0, 0,
-    0.1, 0, 0,
+    0.05, 0, 0,
     0, 0, 0),
   nrow = 3,
   byrow = TRUE
@@ -260,20 +294,124 @@ G3_3 <- matrix(
   byrow = TRUE
 )
 
+
+G4 <- matrix(
+  c(0, 0, 0, 0,
+    0.075, 0, 0, 0,
+    0, 0.075, 0, 0,
+    0, 0, 0, 0),
+  nrow = 4,
+  byrow = TRUE
+)
+
+sim_params <- list(
+  h2 = 0.3,
+  J = 5000,
+  N = 20000,
+  pi_J = 0.1,
+  alpha = 5e-8
+)
+
+sim_params_str <- paste0(names(sim_params), " = ", sim_params, collapse = ", ")
+
+multi_sim <- function(n, G) {
+  sim_results <- list()
+  plot_res <- list()
+  seeds <- sample(1:1e6, n)
+  for (i in seq_along(seeds)) {
+    s <- seeds[[i]]
+    set.seed(s)
+    sim_results[[i]] <- logdet_perm_fas_sim(G)
+    sim_results[[i]]$sim_results <- process_sim_results(sim_results[[i]], G)
+    plot_res[[i]] <- plot_sim_results(sim_results[[i]]$sim_results, G)
+  }
+
+  return(list(
+    sim_results = sim_results,
+    plot_results = plot_res,
+    seeds = seeds
+  ))
+}
+
+plot_n_sim <- function(x, G) {
+  all_res <- bind_rows(lapply(x$sim_results, `[[`, "sim_results"), .id = "sim") %>%
+    group_by(sim) %>%
+    mutate(AIC_diff = min(AIC) - AIC)
+
+  combined_post_prob <- all_res %>%
+    ggplot(aes(x = config_int, y = posterior_probs, color = correct_subset, shape = correct_config)) +
+    geom_point() +
+    facet_wrap(~sim, ncol = 2) +
+    # Remove x-axis labels
+    scale_x_continuous(
+      breaks = unique(all_res$config_int),
+      labels = unique(all_res$config_axis)
+    ) +
+    xlab("DAG Configuration") +
+    ylab("Posterior uniform prior probs") +
+    labs(
+      title = paste0("True graph:\n", paste0(capture.output(print(G)), collapse = "\n")),
+      subtitle = sim_params_str
+    ) +
+    theme(
+      title = element_text(size = 12)
+    ) +
+    theme_minimal()
+
+  combined_AIC <- all_res %>%
+    ggplot(aes(x = config_int, y = AIC_diff, color = correct_subset, shape = correct_config)) +
+    geom_point() +
+    facet_wrap(~sim, ncol = 2) +
+    # Remove x-axis labels
+    scale_x_continuous(
+      breaks = unique(all_res$config_int),
+      labels = unique(all_res$config_axis)
+    ) +
+    coord_cartesian(
+      clip = "off"
+    ) +
+    xlab("DAG Configuration") +
+    ylab("MIN(AIC) - AIC") +
+    labs(
+      title = paste0("True graph:\n", paste0(capture.output(print(G)), collapse = "\n")),
+      subtitle = sim_params_str
+    ) +
+    theme(
+      title = element_text(size = 12)
+    ) +
+    theme_minimal()
+
+  list(
+    combined_post_prob = combined_post_prob,
+    combined_AIC = combined_AIC
+  )
+}
+
+G3_sim <- multi_sim(10, G3)
+G3_2_sim <- multi_sim(10, G3_2)
+G3_3_sim <- multi_sim(10, G3_3)
+
+G3_plot_res <- plot_n_sim(G3_sim, G3)
+G3_2_plot_res <- plot_n_sim(G3_2_sim, G3_2)
+G3_3_plot_res <- plot_n_sim(G3_3_sim, G3_3)
+
+save_plot <- function(plot, suffix) {
+  today_date <- format(Sys.Date(), "%Y-%m-%d")
+  ggsave(print(sprintf("~/Projects/NESMR-simulations/results/%s_%s.pdf", today_date, suffix)),
+         plot, width = 14, height = 14)
+}
+
+save_plot(G3_plot_res$combined_post_prob, "G3_10_post_prob")
+save_plot(G3_plot_res$combined_AIC, "G3_10_AIC")
+save_plot(G3_2_plot_res$combined_post_prob, "G3_2_10_post_prob")
+save_plot(G3_2_plot_res$combined_AIC, "G3_2_10_AIC")
+save_plot(G3_3_plot_res$combined_post_prob, "G3_3_10_post_prob")
+save_plot(G3_3_plot_res$combined_AIC, "G3_3_10_AIC")
+
 set.seed(13)
-G3_sim_results <- logdet_perm_fas_sim(G3)
-set.seed(132)
-G3_2_sim_results <- logdet_perm_fas_sim(G3_2)
-set.seed(133)
-G3_3_sim_results <- logdet_perm_fas_sim(G3_3)
+G4_sim_results <- logdet_perm_fas_sim(G4)
+G4_sim_results$sim_results <- process_sim_results(G4_sim_results, G4)
+plot_G4_res <- plot_sim_results(G4_sim_results$sim_results, G4, max_configs = 50)
 
-plot_G3_res <- plot_sim_results(G3_sim_results, G3)
-plot_G3_2_res <- plot_sim_results(G3_2_sim_results, G3_2)
-plot_G3_3_res <- plot_sim_results(G3_3_sim_results, G3_3)
-
-ggsave(print("~/Projects/NESMR-simulations/results/2024-09-06_three_node_one_edge.png"),
-       plot_G3_res$plot, width = 14, height = 6)
-ggsave(print("~/Projects/NESMR-simulations/results/2024-09-06_three_node_collider.png"),
-       plot_G3_2_res$plot, width = 14, height = 6)
-ggsave(print("~/Projects/NESMR-simulations/results/2024-09-06_three_node_mediation.png"),
-       plot_G3_3_res$plot, width = 14, height = 6)
+ggsave(print(sprintf("~/Projects/NESMR-simulations/results/%s_four_node_mediation.png", today_date)),
+       plot_G4_res$plot, width = 20, height = 8)
