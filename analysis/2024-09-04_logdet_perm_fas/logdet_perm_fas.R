@@ -4,39 +4,7 @@ library(tidyr)
 library(ggplot2)
 devtools::load_all("/Users/stefaneng/Projects/esmr")
 
-# fas_bootstrap <- function(
-#     total_est, total_est_se, reps = 100) {
-#   d <- ncol(total_est)
-#   non_diag_i <- -seq(1, d^2, by = d + 1)
-#   replicate(reps, {
-#     bootstrap_tot_est <- matrix(0, nrow = d, ncol = d)
-#     bootstrap_tot_est[non_diag_i] <- total_est[non_diag_i] + rnorm(d * (d - 1), mean = 0, sd = total_est_se[non_diag_i])
-#     maximal_acyclic_subgraph(bootstrap_tot_est)
-#   }, simplify = FALSE)
-# }
-
-project_DAG_bootstrap <- function(
-    total_est, total_est_se, reps = 100,
-    s = 1.1,
-    ...) {
-  d <- ncol(total_est)
-  non_diag_i <- -seq(1, d^2, by = d + 1)
-  replicate(reps, {
-    bootstrap_tot_est <- matrix(0, nrow = d, ncol = d)
-    bootstrap_tot_est[non_diag_i] <- total_est[non_diag_i] + rnorm(d * (d - 1), mean = 0, sd = total_est_se[non_diag_i])
-    project_to_DAG(
-      bootstrap_tot_est,
-      threshold_to_DAG = TRUE,
-      maxit = 2000,
-      trace = 5,
-      s = s, # TODO: Why do we need s > 1? Always fails when s = 1
-      ...
-    )
-  }, simplify = FALSE)
-  # TODO: Standard error for each configuration ?
-}
-
-logdet_perm_fas_sim <- function(G, permute = TRUE) {
+logdet_perm_fas_sim <- function(G, permute = TRUE, faster_init = FALSE) {
   d <- ncol(G)
   stopifnot(nrow(G) == d)
   h2 <- 0.3
@@ -78,7 +46,7 @@ logdet_perm_fas_sim <- function(G, permute = TRUE) {
     maxit = 2000
   )
 
-  rtn_list$nesmr_full_bootstrap <- project_DAG_bootstrap(
+  rtn_list$nesmr_full_bootstrap <- project_to_DAG_bootstrap(
     total_est = nesmr_full$beta_hat,
     total_est_se = nesmr_full$se_beta_hat
   )
@@ -87,40 +55,32 @@ logdet_perm_fas_sim <- function(G, permute = TRUE) {
     (x$W != 0) + 0
   }))
 
+  # TODO: For each of the config, do the backselect test
+  # Want to find someway to avoid repeating this over again..
+
   # Generate all permutations
   # Simple way is to just find all the unique configs that are a subset of the unique configs
-  all_perms <- generate_dags_with_permutations(d)
 
-  unique_config_subsets <- unlist(lapply(unique_configs, function(x) {
-    all_perms[sapply(all_perms, function(y) {
-      # TODO: Could move this into own function
-      sum((y == 0) & x) == 0
-    })]
-  }), recursive = FALSE)
-
-  # Only take the unique subsets
-  unique_config_subsets <- unique(unique_config_subsets)
-
-  # TODO: What we really want to do is _stop_ if a superset graph is found will all significant edges
-
-  rtn_list$refit_mods <- lapply(unique_config_subsets, function(B) {
-    trait_ix <- which(rowSums(B) > 0)
-    minp_trait <- apply(pval_true[, trait_ix], 1, min)
-    trait_ix <- which(minp < alpha)
-
+  # Fit all of the configurations found in the bootstrap
+  refit_mods <- lapply(unique_configs, function(B) {
     with(dat, esmr(
       beta_hat_X = beta_hat,
       se_X = s_estimate,
-      variant_ix = trait_ix,
+      variant_ix = ix,
       G = diag(d), # required for network problem
       direct_effect_template = B))
   })
 
-  rtn_list$refit_significant <- unique(lapply(rtn_list$refit_mods, function(x) {
-    (exp(x$pvals_dm) < 0.05) + 0
-  }))
+  rtn_list$backselect_mods <- nesmr_backselect(
+    refit_mods,
+    beta_hat = dat$beta_hat,
+    se_beta_hat = dat$s_estimate,
+    Z_true = Ztrue
+    )
 
   # TODO: Refit all subsets of DAGs that are significant
+
+  all_perms <- generate_dags_with_permutations(d)
 
   rtn_list$all_ordering <- with(dat, nesmr_all_permn(
     beta_hat = beta_hat,
@@ -128,7 +88,9 @@ logdet_perm_fas_sim <- function(G, permute = TRUE) {
     posterior_probs = TRUE,
     all_DAGs = TRUE,
     return_model = TRUE,
-    B_templates = all_perms
+    B_templates = all_perms,
+    Z_true = Ztrue,
+    direct_effect_init = nesmr_full$beta_hat
   ))
 
   log_lik_order <- order(rtn_list$all_ordering$log_lik, decreasing = TRUE)
@@ -149,16 +111,8 @@ process_sim_results <- function(z, G) {
     all(x == (G != 0))
   }))
 
-  .matrix_to_str <- function(B, collapse = "") {
-    paste0(
-      apply(B, 1, function(x) {
-        paste0(x, collapse = collapse)
-      }),
-      collapse = "\n")
-  }
-
   permn_config <- unlist(lapply(z$all_ordering$B_template, function(x) paste0(as.numeric(x), collapse = "")))
-  permn_config_axis <- unlist(lapply(z$all_ordering$B_template, .matrix_to_str))
+  permn_config_axis <- unlist(lapply(z$all_ordering$B_template, matrix_to_str))
 
   simulation_results <- data.frame(
     correct_subset = correct_subset,
@@ -314,14 +268,14 @@ sim_params <- list(
 
 sim_params_str <- paste0(names(sim_params), " = ", sim_params, collapse = ", ")
 
-multi_sim <- function(n, G) {
+multi_sim <- function(n, G, faster_init = FALSE) {
   sim_results <- list()
   plot_res <- list()
   seeds <- sample(1:1e6, n)
   for (i in seq_along(seeds)) {
     s <- seeds[[i]]
     set.seed(s)
-    sim_results[[i]] <- logdet_perm_fas_sim(G)
+    sim_results[[i]] <- logdet_perm_fas_sim(G, faster_init = faster_init)
     sim_results[[i]]$sim_results <- process_sim_results(sim_results[[i]], G)
     plot_res[[i]] <- plot_sim_results(sim_results[[i]]$sim_results, G)
   }
@@ -387,10 +341,34 @@ plot_n_sim <- function(x, G) {
   )
 }
 
-G3_sim <- multi_sim(10, G3)
-G3_2_sim <- multi_sim(10, G3_2)
-G3_3_sim <- multi_sim(10, G3_3)
+set.seed(13)
+G3_2_sim_results <- logdet_perm_fas_sim(G3_2)
+G3_2_sim_results$sim_results <- process_sim_results(G3_2_sim_results, G3_2)
+plot_G3_2_res <- plot_sim_results(G3_2_sim_results$sim_results, G3_2, max_configs = 50)
 
+# TODO: Compare the all permn results to the backselect results
+# HOPE is that the backselect results are the highest likelihood models
+backselect_ll <- sapply(G3_2_sim_results$backselect_mods, function(x) x$log_lik)
+all_permn_log_sum <- log_sum_exp(G3_2_sim_results$all_ordering$log_lik)
+
+# Percentage is high! this is good
+sum(exp(backselect_ll - all_permn_log_sum))
+
+stop()
+# system.time({
+#   G3_sim <- multi_sim(10, G3, faster_init = FALSE)
+#   G3_2_sim <- multi_sim(10, G3_2, faster_init = FALSE)
+#   G3_3_sim <- multi_sim(10, G3_3, faster_init = FALSE)
+# })
+
+# set.seed(13)
+# system.time({
+#   G3_sim2 <- multi_sim(10, G3, faster_init = T)
+#   G3_2_sim2 <- multi_sim(10, G3_2, faster_init = T)
+#   G3_3_sim2 <- multi_sim(10, G3_3, faster_init = T)
+# })
+
+# stop()
 G3_plot_res <- plot_n_sim(G3_sim, G3)
 G3_2_plot_res <- plot_n_sim(G3_2_sim, G3_2)
 G3_3_plot_res <- plot_n_sim(G3_3_sim, G3_3)
@@ -415,3 +393,5 @@ plot_G4_res <- plot_sim_results(G4_sim_results$sim_results, G4, max_configs = 50
 
 ggsave(print(sprintf("~/Projects/NESMR-simulations/results/%s_four_node_mediation.png", today_date)),
        plot_G4_res$plot, width = 20, height = 8)
+
+refit_mods_log_lik <- unlist(lapply(G4_sim_results$refit_mods, log_py))
