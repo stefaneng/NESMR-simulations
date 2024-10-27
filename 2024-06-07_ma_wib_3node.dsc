@@ -1,7 +1,7 @@
 DSC:
   run: simulate * fit_esmr
   exec_path: R
-  output: simulation_results/2024-06-10_ma_wib_3node
+  output: simulation_results/2024-06-11_ma_wib_3node
 
 simulate:  renv.R + utils.R + ma_wib_3node/sim_ma_wib_3node.R
   N: 30000, 2e5

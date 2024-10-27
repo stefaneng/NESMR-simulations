@@ -5,7 +5,8 @@ library(forcats)
 library(reshape2)
 library(parallel)
 
-devtools::load_all('../esmr/')
+# devtools::load_all('../esmr/')
+devtools::load_all('/nfs/turbo/sph-jvmorr/NESMR/esmr')
 
 # Note: This was not run on cluster but on local machine
 #  This illustrates that we have winner's curse

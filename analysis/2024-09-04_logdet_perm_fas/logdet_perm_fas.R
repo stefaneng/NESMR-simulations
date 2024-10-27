@@ -43,6 +43,7 @@ logdet_perm_fas_sim <- function(G, permute = TRUE, faster_init = FALSE) {
   rtn_list$nesmr_full_DAG <- project_to_DAG(
     nesmr_full$beta_hat,
     threshold_to_DAG = TRUE,
+    penalty = "L2",
     maxit = 2000
   )
 

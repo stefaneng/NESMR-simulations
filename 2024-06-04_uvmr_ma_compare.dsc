@@ -13,6 +13,6 @@ simulate: renv.R + uvmr_ma_compare/uvmr_ma_sim.R + R(
   n: 10000, 20000, 40000
   J: 500000
   pi_J: 0.001
-  h2: 0.1, 0.25, 0.5
+  h2: 0.25, 0.5
   true_beta: 0.1
   $res: res

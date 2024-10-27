@@ -34,3 +34,4 @@ genomic_sem_fit <- usermodel(
   covstruc = ldsc_res,
   model = sem_model
 )
+

@@ -6,7 +6,7 @@ DSC:
             home: /home/engs
         queue_type: pbs
         status_check_interval: 20
-        max_running_jobs: 90
+        max_running_jobs: 50
         max_cores: 40
         max_mem: 57G
         task_template: |
@@ -22,7 +22,6 @@ DSC:
             cd {cur_dir}
             module load Rtidyverse/4.3.1
             module load glpk/5.0
-            R CMD INSTALL /nfs/turbo/sph-jvmorr/NESMR/esmr
         submit_cmd: sbatch {job_file}
         submit_cmd_output: "Submitted batch job {job_id}"
         status_cmd: squeue --job {job_id}
@@ -34,4 +33,8 @@ default:
     nodes_per_job: 1
     cpus_per_instance: 1
     mem_per_instance: 5G
+    time_per_instance: 15m
+
+simulate:
+    instances_per_job: 10
     time_per_instance: 15m

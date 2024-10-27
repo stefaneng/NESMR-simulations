@@ -1,6 +1,6 @@
 
 renv::load('/nfs/turbo/sph-jvmorr/NESMR/simulations')
-devtools::load_all('/nfs/turbo/sph-jvmorr/NESMR/esmr')
+# devtools::load_all('/nfs/turbo/sph-jvmorr/NESMR/esmr')
 library(ggplot2)
 library(dscrutils)
 library(reshape2)
